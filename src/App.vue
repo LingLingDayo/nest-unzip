@@ -58,7 +58,7 @@ onMounted(async () => {
           <h1 class="text-lg font-black tracking-tight text-app-text flex items-center gap-2">
             NestUnzip <span class="text-[10px] font-black uppercase text-app-primary bg-app-primary-light px-2 py-0.5 rounded-full tracking-wider border border-app-primary/10">v{{ pkg.version }}</span>
           </h1>
-          <p class="text-[10px] text-app-text-mute font-medium">深度嵌套批量解压专家</p>
+          <p class="text-[10px] text-app-text-mute font-medium">批量解压深度嵌套压缩包</p>
         </div>
       </div>
 
