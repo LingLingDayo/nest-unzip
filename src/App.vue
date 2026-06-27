@@ -7,8 +7,11 @@ import { open } from "@tauri-apps/plugin-dialog";
 import { openPath } from "@tauri-apps/plugin-opener";
 
 import SettingsModal from "./components/common/SettingsModal/SettingsModal.vue";
+import PasswordModal from "./components/common/PasswordModal.vue";
 import type { SettingGroup } from "./components/common/SettingsModal/types";
 import { extractDefaultSettings } from "./components/common/SettingsModal/utils";
+
+const passwordModalRef = ref<InstanceType<typeof PasswordModal> | null>(null);
 
 // ==========================================
 // 1. 任务定义与状态
@@ -188,11 +191,11 @@ function parsePath(fullPath: string) {
   return { filename, targetDir };
 }
 
-const addFilesByPaths = (filePaths: string[]) => {
+const addFilesByPaths = async (filePaths: string[]) => {
   const extensions = [".zip", ".7z", ".rar", ".tar", ".gz", ".bz2", ".xz"];
   let addedCount = 0;
 
-  filePaths.forEach((p) => {
+  for (const p of filePaths) {
     const { filename, targetDir } = parsePath(p);
     const isArchive = extensions.some((ext) => filename.toLowerCase().endsWith(ext));
     
@@ -200,6 +203,18 @@ const addFilesByPaths = (filePaths: string[]) => {
     const exists = tasks.value.some((t) => t.path === p);
 
     if (isArchive && !exists) {
+      let finalTargetDir = targetDir;
+      let count = 1;
+      // 检查目录是否存在，若存在则加序号
+      try {
+        while (await invoke<boolean>("path_exists", { path: finalTargetDir })) {
+          finalTargetDir = `${targetDir} (${count})`;
+          count++;
+        }
+      } catch (err) {
+        console.error("检查文件夹是否存在出错:", err);
+      }
+
       tasks.value.push({
         id: Math.random().toString(36).substring(2, 9),
         name: filename,
@@ -207,12 +222,12 @@ const addFilesByPaths = (filePaths: string[]) => {
         status: "pending",
         progress: 0,
         passwords: "",
-        targetDir: targetDir,
+        targetDir: finalTargetDir,
         log: [],
       });
       addedCount++;
     }
-  });
+  }
 
   if (addedCount > 0) {
     addLog("系统", `成功添加 ${addedCount} 个压缩包文件`);
@@ -231,9 +246,9 @@ const handleSelectFiles = async () => {
       ],
     });
     if (selected && Array.isArray(selected)) {
-      addFilesByPaths(selected);
+      await addFilesByPaths(selected);
     } else if (selected && typeof selected === "string") {
-      addFilesByPaths([selected]);
+      await addFilesByPaths([selected]);
     }
   } catch (e) {
     addLog("系统", `选择文件失败: ${e}`, "error");
@@ -299,39 +314,193 @@ const startBulkExtraction = async () => {
     task.status = "running";
     task.progress = 5;
     activeLogTaskId.value = task.id;
+    task.log = []; // 清空之前的日志
 
     // 合并密码列表
-    // 全局密码按行拆分
     const globalPwds = (appSettings.globalPasswords as string)
       .split("\n")
       .map((s) => s.trim())
       .filter((s) => s.length > 0);
     
-    // 专属密码按逗号/空格拆分
     const taskPwds = task.passwords
       .split(/[,,，\s]/)
       .map((s) => s.trim())
       .filter((s) => s.length > 0);
 
-    const mergedPasswords = Array.from(new Set([...taskPwds, ...globalPwds]));
+    let mergedPasswords = Array.from(new Set([...taskPwds, ...globalPwds]));
 
     addLog(task.name, "解压缩流程初始化...");
+    task.log.push("解压缩流程初始化...");
+
+    // 检测目标目录在任务开始前是否存在，并记录初始子项
+    let dirExistedBefore = false;
+    let initialEntries: string[] = [];
+    try {
+      dirExistedBefore = await invoke<boolean>("path_exists", { path: task.targetDir });
+      if (dirExistedBefore) {
+        initialEntries = await invoke<string[]>("scan_dir_entries", { dirPath: task.targetDir });
+      }
+    } catch (e) {
+      console.error(e);
+    }
+
+    const cleanupOnError = async () => {
+      addLog(task.name, "正在清理中间产物到回收站...", "info");
+      task.log.push("正在清理中间产物到回收站...");
+      try {
+        if (!dirExistedBefore) {
+          // 如果目标目录原本不存在，直接删除整个目录
+          await invoke("trash_path", { path: task.targetDir });
+        } else {
+          // 如果原本存在，获取最新的所有子项，比对出本次解压新增的项，将其放入回收站
+          const currentEntries = await invoke<string[]>("scan_dir_entries", { dirPath: task.targetDir });
+          const addedEntries = currentEntries.filter(item => !initialEntries.includes(item));
+          for (const entry of addedEntries) {
+            await invoke("trash_path", { path: entry });
+          }
+        }
+      } catch (err) {
+        addLog(task.name, `清理中间产物失败: ${err}`, "error");
+        task.log.push(`清理中间产物失败: ${err}`);
+      }
+    };
 
     try {
-      await invoke("run_depth_extraction", {
-        taskId: task.id,
-        archivePath: task.path,
-        targetDir: task.targetDir,
-        passwords: mergedPasswords,
-        exePath: exePath,
-        exeType: exeType,
-      });
+      let queue: string[] = [task.path];
+      let depth = 1;
+      const maxDepth = 20;
+
+      addLog(task.name, "开始第一层解压...", "info");
+      task.log.push("开始第一层解压...");
+
+      while (queue.length > 0) {
+        if (depth > maxDepth) {
+          throw new Error("达到最大嵌套解包深度限制 (20层)，停止解包。");
+        }
+
+        const currentLevelArchives = [...queue];
+        queue = []; // 清空队列，用于存放下一层扫描到的压缩包
+
+        addLog(task.name, `第 ${depth} 层：开始解压 ${currentLevelArchives.length} 个文件...`, "info");
+        task.log.push(`第 ${depth} 层：开始解压 ${currentLevelArchives.length} 个文件...`);
+
+        for (const subArchive of currentLevelArchives) {
+          const filename = subArchive.split(/[\\/]/).pop() || "未知压缩包";
+          
+          let currentTargetDir = task.targetDir;
+          if (subArchive !== task.path) {
+            // 嵌套子包，解压到其所在的父目录下
+            const lastSlash = Math.max(subArchive.lastIndexOf("/"), subArchive.lastIndexOf("\\"));
+            currentTargetDir = lastSlash > -1 ? subArchive.substring(0, lastSlash) : task.targetDir;
+          }
+
+          task.log.push(`正在解压: ${filename}`);
+          
+          let isExtracted = false;
+          while (!isExtracted) {
+            const result = await invoke<{ success: boolean; errorType: string; message: string }>("extract_archive", {
+              exePath: exePath,
+              exeType: exeType,
+              archivePath: subArchive,
+              targetDir: currentTargetDir,
+              passwords: mergedPasswords,
+            });
+
+            if (result.success) {
+              isExtracted = true;
+              task.log.push(`解包成功: ${filename}`);
+              
+              // 解包成功后，如果不是第一层包，将子压缩包移到回收站
+              if (subArchive !== task.path) {
+                task.log.push(`移动中间包到回收站: ${filename}`);
+                await invoke("trash_path", { path: subArchive });
+              }
+            } else {
+              // 密码错误
+              if (result.errorType === "PasswordRequired") {
+                task.log.push(`密码错误或未提供密码: ${filename}`);
+                if (!passwordModalRef.value) {
+                  throw new Error("密码弹窗组件未挂载，解包终止");
+                }
+
+                // 弹出公共密码框
+                const newPassword = await passwordModalRef.value.open({
+                  title: "输入解压密码",
+                  message: `文件 [${filename}] 已加密，请输入正确的解压密码：`,
+                  placeholder: "请输入密码",
+                });
+
+                if (newPassword === null) {
+                  // 用户取消
+                  throw new Error("USER_CANCEL");
+                } else if (newPassword.trim() === "") {
+                  // 输入为空，继续循环询问
+                  continue;
+                } else {
+                  // 输入新密码，加入重试密码组
+                  mergedPasswords = Array.from(new Set([newPassword.trim(), ...mergedPasswords]));
+                  
+                  // 同步回专属密码文本框
+                  const currentPwds = task.passwords
+                    .split(/[,,，\s]/)
+                    .map((s) => s.trim())
+                    .filter((s) => s.length > 0);
+                  if (!currentPwds.includes(newPassword.trim())) {
+                    currentPwds.push(newPassword.trim());
+                    task.passwords = currentPwds.join(", ");
+                  }
+                  
+                  task.log.push(`正在使用新密码重试: ${filename}...`);
+                }
+              } else {
+                // 其他未知错误，直接抛出
+                throw new Error(result.message);
+              }
+            }
+          }
+        }
+
+        // 扫描当前目录下是否产生了嵌套压缩包
+        const found = await invoke<string[]>("scan_archives", { dirPath: task.targetDir });
+        if (found && found.length > 0) {
+          queue.push(...found);
+        }
+
+        // 更新进度
+        const currentProgress = 35 + (depth * 5);
+        task.progress = Math.min(currentProgress, 95);
+
+        if (queue.length > 0) {
+          depth++;
+        }
+      }
+
+      // 任务解压全部成功
       task.status = "success";
       task.progress = 100;
-    } catch (e) {
+      addLog(task.name, "解压缩成功，已成功清理所有中间压缩包！", "success");
+      task.log.push("全部深度解压完成，已成功清理所有中间压缩包！");
+      
+      // 自动打开文件夹
+      if (appSettings.autoOpen) {
+        openPath(task.targetDir).catch((err) => {
+          addLog(task.name, `自动打开目标文件夹失败: ${err}`, "error");
+        });
+      }
+
+    } catch (e: any) {
       task.status = "error";
       task.progress = 100;
-      addLog(task.name, `任务失败: ${e}`, "error");
+      if (e.message === "USER_CANCEL") {
+        addLog(task.name, "用户取消了解压缩", "error");
+        task.log.push("解压任务已被用户取消。");
+      } else {
+        addLog(task.name, `任务失败: ${e.message || e}`, "error");
+        task.log.push(`任务失败: ${e.message || e}`);
+      }
+      
+      // 清理中间产物
+      await cleanupOnError();
     }
   }
 
@@ -377,9 +546,9 @@ onMounted(async () => {
   });
 
   // 监听窗口的拖拽文件事件
-  unlistenDragDrop = await getCurrentWindow().onDragDropEvent((event) => {
+  unlistenDragDrop = await getCurrentWindow().onDragDropEvent(async (event) => {
     if (event.payload.type === "drop") {
-      addFilesByPaths(event.payload.paths);
+      await addFilesByPaths(event.payload.paths);
     }
   });
 });
@@ -707,6 +876,9 @@ const activeLogTask = computed(() => {
       :groups="settingGroups"
       @save="saveSettings"
     />
+
+    <!-- Password Modal -->
+    <PasswordModal ref="passwordModalRef" />
 
   </div>
 </template>
