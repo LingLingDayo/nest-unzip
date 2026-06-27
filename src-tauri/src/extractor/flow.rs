@@ -101,6 +101,30 @@ pub fn run_extraction_flow(
             break;
         }
 
+        if nested_archives.len() >= 2 {
+            let names: Vec<String> = nested_archives
+                .iter()
+                .map(|p| {
+                    std::path::Path::new(p)
+                        .file_name()
+                        .and_then(|s| s.to_str())
+                        .unwrap_or("未知压缩包")
+                        .to_string()
+                })
+                .collect();
+            emit_log(
+                &format!(
+                    "第 {} 层扫描找到 {} 个嵌套压缩包: {}，为避免混乱，跳过对这些嵌套包的解压。",
+                    depth,
+                    nested_archives.len(),
+                    names.join(", ")
+                ),
+                "success",
+                100.0,
+            );
+            break;
+        }
+
         emit_log(
             &format!(
                 "第 {} 层扫描找到 {} 个嵌套压缩包...",

@@ -353,9 +353,14 @@ export function useUnzip(
 
           const found = await invoke<string[]>("scan_archives", { dirPath: task.targetDir });
           if (found && found.length > 0) {
-            const foundNames = found.map(item => item.split(/[\\/]/).pop());
-            addLog(task.name, `在当前层发现 ${found.length} 个嵌套的下一层压缩包: ${foundNames.join(", ")}，加入待解压队列。`, "info");
-            queue.push(...found);
+            if (found.length >= 2) {
+              const foundNames = found.map(item => item.split(/[\\/]/).pop());
+              addLog(task.name, `在当前层发现 ${found.length} 个嵌套压缩包: ${foundNames.join(", ")}，为避免混乱，跳过对这些嵌套包的解压。`, "info");
+            } else {
+              const foundNames = found.map(item => item.split(/[\\/]/).pop());
+              addLog(task.name, `在当前层发现 ${found.length} 个嵌套的下一层压缩包: ${foundNames.join(", ")}，加入待解压队列。`, "info");
+              queue.push(...found);
+            }
           } else {
             addLog(task.name, `在当前层未发现新的嵌套压缩包`, "info");
           }
