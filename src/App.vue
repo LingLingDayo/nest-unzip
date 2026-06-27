@@ -34,7 +34,7 @@ const {
   removeTask,
   clearTasks,
   startBulkExtraction,
-} = useUnzip(appSettings, detectedToolsState, passwordModalRef, addLog, clearLogs);
+} = useUnzip(appSettings, detectedToolsState, passwordModalRef, addLog);
 
 onMounted(async () => {
   await loadSettings();
@@ -176,6 +176,7 @@ onMounted(async () => {
     <ConsolePanel 
       v-model:is-open="isConsoleOpen"
       :logs="consoleLogs"
+      @clear="clearLogs"
     />
 
     <!-- Settings Modal Dynamic Control -->

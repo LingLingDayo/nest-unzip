@@ -23,8 +23,7 @@ export function useUnzip(
   appSettings: Record<string, any>,
   detectedToolsState: { sevenZip: boolean; bandizip: boolean },
   passwordModalRef: Ref<PasswordModalInstance | null>,
-  addLog: (taskName: string, message: string, type?: "info" | "success" | "error") => void,
-  clearLogs: () => void
+  addLog: (taskName: string, message: string, type?: "info" | "success" | "error") => void
 ) {
   const tasks = ref<ExtractTask[]>([]);
   const isProcessing = ref(false);
@@ -138,8 +137,7 @@ export function useUnzip(
   const clearTasks = () => {
     if (isProcessing.value) return;
     tasks.value = [];
-    clearLogs();
-    addLog("系统", "列表与日志已清空");
+    addLog("系统", "任务列表已清空");
   };
 
   const startBulkExtraction = async () => {

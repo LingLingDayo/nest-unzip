@@ -9,6 +9,7 @@ const props = defineProps<{
 
 const emit = defineEmits<{
   (e: "update:isOpen", val: boolean): void;
+  (e: "clear"): void;
 }>();
 
 const logsContainer = ref<HTMLDivElement | null>(null);
@@ -48,10 +49,22 @@ watch(
         <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
           <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 9l3 3-3 3m5 0h3M5 20h14a2 2 0 002-2V6a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
         </svg>
-        <span>全局控制台日志 (实时监控)</span>
+        <span>控制台日志</span>
       </div>
       
       <div class="flex items-center gap-4">
+        <!-- Clear logs button (only visible when open) -->
+        <button 
+          v-if="isOpen"
+          @click.stop="emit('clear')" 
+          class="p-1.5 rounded-lg hover:bg-app-bg text-app-text-mute hover:text-app-rose transition-colors cursor-pointer flex items-center justify-center group"
+          title="清空控制台日志"
+        >
+          <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 transition-transform group-hover:scale-105" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+          </svg>
+        </button>
+
         <div class="transition-transform duration-300" :class="{ 'rotate-180': isOpen }">
           <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M5 15l7-7 7 7" />
