@@ -61,18 +61,18 @@ const isItemVisible = (item: SettingItem): boolean => {
 <template>
   <div v-if="show" class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-app-text/20 backdrop-blur-md transition-all animate-in fade-in duration-300" @click.self="handleCancel">
     <div 
-      class="bg-app-surface border border-app-border rounded-[32px] shadow-app-xl w-full max-w-4xl max-h-[90vh] flex flex-col transform transition-all overflow-hidden animate-in zoom-in-95 duration-500"
+      class="bg-app-surface border border-app-border rounded-2xl shadow-app-xl w-full max-w-[640px] md:max-w-[680px] lg:max-w-[780px] h-[90vh] min-h-[400px] max-h-[640px] lg:max-h-[720px] flex flex-col transform transition-all overflow-hidden animate-in zoom-in-95 duration-500"
       :style="{ width, height, maxWidth, maxHeight }"
     >
       <!-- Header Area -->
-      <div class="px-7 py-4 border-b border-app-border flex justify-between items-center bg-app-surface shrink-0">
+      <div class="px-5 py-3 border-b border-app-border flex justify-between items-center bg-app-surface shrink-0">
         <div class="flex flex-col">
-            <h3 class="text-2xl font-black text-app-text tracking-tight flex items-center">
-              设置 <span class="ml-3 font-medium opacity-20 text-sm tracking-[0.2em]">SETTINGS</span>
+            <h3 class="text-lg font-bold text-app-text tracking-tight flex items-center">
+              设置 <span class="ml-2 font-medium opacity-20 text-[10px] tracking-[0.2em]">SETTINGS</span>
             </h3>
         </div>
-        <button @click="handleCancel" class="text-app-text-mute hover:text-app-text transition-all p-2 rounded-2xl hover:bg-app-bg cursor-pointer group">
-          <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6 group-hover:rotate-90 transition-transform" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+        <button @click="handleCancel" class="text-app-text-mute hover:text-app-text transition-all p-1.5 rounded-xl hover:bg-app-bg cursor-pointer group">
+          <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 group-hover:rotate-90 transition-transform" fill="none" viewBox="0 0 24 24" stroke="currentColor">
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M6 18L18 6M6 6l12 12" />
           </svg>
         </button>
@@ -81,12 +81,12 @@ const isItemVisible = (item: SettingItem): boolean => {
       <!-- Main Body with Sidebar -->
       <div class="flex-1 flex overflow-hidden">
         <!-- Sidebar Navigation -->
-        <div class="w-60 border-r border-app-border bg-app-bg/30 overflow-y-auto shrink-0 py-4 px-4 space-y-2 custom-scrollbar">
+        <div class="w-48 border-r border-app-border bg-app-bg/30 overflow-y-auto shrink-0 py-3 px-3 space-y-1 custom-scrollbar">
           <button 
             v-for="group in groups" 
             :key="group.id"
             @click="activeTabId = group.id"
-            class="w-full flex items-center px-4 py-3.5 rounded-2xl transition-all duration-300 group/nav relative overflow-hidden"
+            class="w-full flex items-center px-3.5 py-2.5 rounded-xl transition-all duration-300 group/nav relative overflow-hidden"
             :class="[
               activeTabId === group.id 
                 ? 'bg-app-surface shadow-sm text-app-text' 
@@ -95,7 +95,7 @@ const isItemVisible = (item: SettingItem): boolean => {
           >
             <!-- Active Indicator -->
             <div 
-              class="absolute left-0 top-3 bottom-3 w-1.5 rounded-r-full transition-all duration-500"
+              class="absolute left-0 top-2 bottom-2 w-1 rounded-r-full transition-all duration-500"
               :style="{ 
                 backgroundColor: group.color || 'var(--color-app-primary)',
                 transform: activeTabId === group.id ? 'scaleY(1)' : 'scaleY(0)',
@@ -103,16 +103,16 @@ const isItemVisible = (item: SettingItem): boolean => {
               }"
             ></div>
 
-            <div class="flex items-center gap-3">
+            <div class="flex items-center gap-2">
               <span 
-                class="w-2 h-2 rounded-full transition-all duration-300" 
+                class="w-1.5 h-1.5 rounded-full transition-all duration-300" 
                 :style="{ 
                   backgroundColor: group.color || 'var(--color-app-primary)',
-                  boxShadow: activeTabId === group.id ? `0 0 12px ${group.color || 'var(--color-app-primary)'}` : 'none',
+                  boxShadow: activeTabId === group.id ? `0 0 10px ${group.color || 'var(--color-app-primary)'}` : 'none',
                   opacity: activeTabId === group.id ? 1 : 0.4
                 }"
               ></span>
-              <span class="font-bold text-sm tracking-wide uppercase">{{ group.title }}</span>
+              <span class="font-bold text-xs tracking-wide uppercase">{{ group.title }}</span>
             </div>
 
             <!-- Hover Decoration -->
@@ -124,18 +124,18 @@ const isItemVisible = (item: SettingItem): boolean => {
         </div>
 
         <!-- Content Area -->
-        <div ref="contentScrollBox" class="flex-1 overflow-y-auto px-8 pt-8 pb-16 custom-scrollbar bg-app-surface/20">
-          <div v-if="currentGroup" :key="activeTabId" class="max-w-2xl mx-auto animate-in fade-in slide-in-from-bottom-4 duration-500">
-            <div class="mb-8">
-              <div class="flex items-center gap-4 mb-2">
-                <div class="h-1 w-12 rounded-full" :style="{ backgroundColor: currentGroup.color || 'var(--color-app-primary)' }"></div>
-                <h4 class="text-[12px] font-black uppercase tracking-[0.3em] opacity-40">Section</h4>
+        <div ref="contentScrollBox" class="flex-1 overflow-y-auto px-6 pt-5 pb-8 custom-scrollbar bg-app-surface/20">
+          <div v-if="currentGroup" :key="activeTabId" class="w-full mx-auto animate-in fade-in slide-in-from-bottom-4 duration-500">
+            <div class="mb-5">
+              <div class="flex items-center gap-3 mb-1.5">
+                <div class="h-0.5 w-8 rounded-full" :style="{ backgroundColor: currentGroup.color || 'var(--color-app-primary)' }"></div>
+                <h4 class="text-[10px] font-black uppercase tracking-[0.3em] opacity-40">Section</h4>
               </div>
-              <h2 class="text-3xl font-black text-app-text tracking-tight">{{ currentGroup.title }}</h2>
-              <p v-if="currentGroup.description" class="mt-2 text-app-text-mute text-sm leading-relaxed">{{ currentGroup.description }}</p>
+              <h2 class="text-xl font-bold text-app-text tracking-tight">{{ currentGroup.title }}</h2>
+              <p v-if="currentGroup.description" class="mt-1 text-app-text-mute text-xs leading-relaxed">{{ currentGroup.description }}</p>
             </div>
 
-            <div class="space-y-8">
+            <div class="space-y-4">
               <template v-for="item in currentGroup.items" :key="item.id">
                 <div v-if="isItemVisible(item)" class="group/item">
                   <DynamicControl :config="item" :settings="localSettings" v-model="localSettings[item.id]" />
@@ -147,16 +147,16 @@ const isItemVisible = (item: SettingItem): boolean => {
       </div>
 
       <!-- Action Footer -->
-      <div class="px-9 py-5 border-t border-app-border flex justify-end shrink-0 gap-4 bg-app-surface">
+      <div class="px-6 py-3.5 border-t border-app-border flex justify-end shrink-0 gap-3 bg-app-surface">
         <button 
           @click="handleCancel" 
-          class="px-8 py-3 text-app-text-dim hover:text-app-text font-black text-xs uppercase tracking-[0.2em] rounded-2xl transition-all border border-app-border hover:bg-app-bg cursor-pointer shadow-sm active:scale-95"
+          class="px-5 py-2 text-app-text-dim hover:text-app-text font-bold text-xs uppercase tracking-[0.2em] rounded-xl transition-all border border-app-border hover:bg-app-bg cursor-pointer shadow-sm active:scale-95"
         >
           取消
         </button>
         <button 
           @click="handleSave" 
-          class="px-11 py-3 bg-app-text text-app-bg hover:bg-app-primary hover:text-white font-black text-xs uppercase tracking-[0.2em] rounded-2xl shadow-xl shadow-app-primary/10 transition-all active:scale-95 cursor-pointer"
+          class="px-7 py-2 bg-app-text text-app-bg hover:bg-app-primary hover:text-white font-bold text-xs uppercase tracking-[0.2em] rounded-xl shadow-md shadow-app-primary/5 transition-all active:scale-95 cursor-pointer"
         >
           保存所有更改
         </button>
