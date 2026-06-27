@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, onMounted, onUnmounted, reactive, computed } from "vue";
+import { ref, onMounted, onUnmounted, reactive } from "vue";
 import { invoke } from "@tauri-apps/api/core";
 import { listen, UnlistenFn } from "@tauri-apps/api/event";
 import { getCurrentWindow } from "@tauri-apps/api/window";
@@ -24,13 +24,11 @@ interface ExtractTask {
   progress: number;
   passwords: string; // 专属密码，逗号隔开
   targetDir: string; // 自定义解压输出目录
-  log: string[];
 }
 
 const tasks = ref<ExtractTask[]>([]);
 const isProcessing = ref(false);
 const showSettings = ref(false);
-const activeLogTaskId = ref<string | null>(null);
 
 // 全局日志终端内容
 interface ConsoleLog {
@@ -251,7 +249,6 @@ const addFilesByPaths = async (filePaths: string[]) => {
         progress: 0,
         passwords: "",
         targetDir: finalTargetDir,
-        log: [],
       });
       addedCount++;
     }
@@ -342,8 +339,6 @@ const startBulkExtraction = async () => {
 
     task.status = "running";
     task.progress = 5;
-    activeLogTaskId.value = task.id;
-    task.log = []; // 清空之前的日志
 
     // 合并密码列表
     const globalPwds = (appSettings.globalPasswords as string)
@@ -359,7 +354,6 @@ const startBulkExtraction = async () => {
     let mergedPasswords = Array.from(new Set([...taskPwds, ...globalPwds]));
 
     addLog(task.name, "解压缩流程初始化...");
-    task.log.push("解压缩流程初始化...");
 
     // 检测目标目录在任务开始前是否存在，并记录初始子项
     let dirExistedBefore = false;
@@ -375,7 +369,6 @@ const startBulkExtraction = async () => {
 
     const cleanupOnError = async () => {
       addLog(task.name, "正在清理中间产物到回收站...", "info");
-      task.log.push("正在清理中间产物到回收站...");
       try {
         if (!dirExistedBefore) {
           // 如果目标目录原本不存在，直接删除整个目录
@@ -390,7 +383,6 @@ const startBulkExtraction = async () => {
         }
       } catch (err) {
         addLog(task.name, `清理中间产物失败: ${err}`, "error");
-        task.log.push(`清理中间产物失败: ${err}`);
       }
     };
 
@@ -400,7 +392,6 @@ const startBulkExtraction = async () => {
       const maxDepth = 20;
 
       addLog(task.name, "开始第一层解压...", "info");
-      task.log.push("开始第一层解压...");
 
       while (queue.length > 0) {
         if (depth > maxDepth) {
@@ -411,7 +402,6 @@ const startBulkExtraction = async () => {
         queue = []; // 清空队列，用于存放下一层扫描到的压缩包
 
         addLog(task.name, `第 ${depth} 层：开始解压 ${currentLevelArchives.length} 个文件...`, "info");
-        task.log.push(`第 ${depth} 层：开始解压 ${currentLevelArchives.length} 个文件...`);
 
         for (const subArchive of currentLevelArchives) {
           const filename = subArchive.split(/[\\/]/).pop() || "未知压缩包";
@@ -422,8 +412,6 @@ const startBulkExtraction = async () => {
             const lastSlash = Math.max(subArchive.lastIndexOf("/"), subArchive.lastIndexOf("\\"));
             currentTargetDir = lastSlash > -1 ? subArchive.substring(0, lastSlash) : task.targetDir;
           }
-
-          task.log.push(`正在解压: ${filename}`);
           
           let isExtracted = false;
           while (!isExtracted) {
@@ -437,17 +425,14 @@ const startBulkExtraction = async () => {
 
             if (result.success) {
               isExtracted = true;
-              task.log.push(`解包成功: ${filename}`);
               
               // 解包成功后，如果不是第一层包，将子压缩包移到回收站
               if (subArchive !== task.path) {
-                task.log.push(`移动中间包到回收站: ${filename}`);
                 await invoke("trash_path", { path: subArchive });
               }
             } else {
               // 密码错误
               if (result.errorType === "PasswordRequired") {
-                task.log.push(`密码错误或未提供密码: ${filename}`);
                 if (!passwordModalRef.value) {
                   throw new Error("密码弹窗组件未挂载，解包终止");
                 }
@@ -478,8 +463,6 @@ const startBulkExtraction = async () => {
                     currentPwds.push(newPassword.trim());
                     task.passwords = currentPwds.join(", ");
                   }
-                  
-                  task.log.push(`正在使用新密码重试: ${filename}...`);
                 }
               } else {
                 // 其他未知错误，直接抛出
@@ -508,7 +491,6 @@ const startBulkExtraction = async () => {
       task.status = "success";
       task.progress = 100;
       addLog(task.name, "解压缩成功，已成功清理所有中间压缩包！", "success");
-      task.log.push("全部深度解压完成，已成功清理所有中间压缩包！");
       
       // 自动打开文件夹
       if (appSettings.autoOpen) {
@@ -522,10 +504,8 @@ const startBulkExtraction = async () => {
       task.progress = 100;
       if (e.message === "USER_CANCEL") {
         addLog(task.name, "用户取消了解压缩", "error");
-        task.log.push("解压任务已被用户取消。");
       } else {
         addLog(task.name, `任务失败: ${e.message || e}`, "error");
-        task.log.push(`任务失败: ${e.message || e}`);
       }
       
       // 清理中间产物
@@ -552,7 +532,6 @@ onMounted(async () => {
     if (task) {
       task.progress = progress;
       task.status = status;
-      task.log.push(message);
 
       let logType: "info" | "success" | "error" = "info";
       if (status === "success") {
@@ -587,13 +566,10 @@ onUnmounted(() => {
   if (unlistenDragDrop) unlistenDragDrop();
 });
 
-const activeLogTask = computed(() => {
-  return tasks.value.find((t) => t.id === activeLogTaskId.value);
-});
 </script>
 
 <template>
-  <div class="h-screen w-screen flex flex-col bg-app-bg text-app-text font-sans overflow-hidden select-none">
+  <div class="h-screen w-screen flex flex-col bg-app-bg text-app-text font-sans overflow-hidden select-none relative">
     
     <!-- Title Header -->
     <header class="h-16 border-b border-app-border bg-app-surface/60 backdrop-blur-md px-8 flex items-center justify-between z-10 shrink-0">
@@ -641,7 +617,7 @@ const activeLogTask = computed(() => {
     </header>
 
     <!-- Main Workspace -->
-    <div class="flex-1 flex overflow-hidden p-6 gap-6 bg-app-bg/20">
+    <div class="flex-1 flex overflow-hidden p-6 pb-16 gap-6 bg-app-bg/20">
       
       <!-- Left Panel: Task Manager -->
       <div class="flex-1 flex flex-col bg-app-surface border border-app-border rounded-[28px] shadow-app-md overflow-hidden relative">
@@ -702,11 +678,7 @@ const activeLogTask = computed(() => {
           <div 
             v-for="(task, index) in tasks" 
             :key="task.id"
-            @click="activeLogTaskId = task.id"
-            class="p-5 rounded-2xl border bg-app-surface shadow-app-sm flex flex-col gap-4 transition-all duration-300 hover:shadow-app-md cursor-pointer relative"
-            :class="[
-              activeLogTaskId === task.id ? 'border-app-primary ring-2 ring-app-primary/5 bg-app-primary-light/5' : 'border-app-border hover:border-app-border-focus'
-            ]"
+            class="p-5 rounded-2xl border bg-app-surface shadow-app-sm flex flex-col gap-4 transition-all duration-300 hover:shadow-app-md border-app-border hover:border-app-border-focus relative"
           >
             <!-- Task Info Header -->
             <div class="flex items-start justify-between">
@@ -808,42 +780,12 @@ const activeLogTask = computed(() => {
 
       </div>
 
-      <!-- Right Panel: Side Log Panel (if not wide enough, can be toggled) -->
-      <div class="w-80 flex flex-col bg-app-surface border border-app-border rounded-[28px] shadow-app-md overflow-hidden shrink-0">
-        <div class="px-6 py-4 border-b border-app-border bg-app-surface flex items-center justify-between shrink-0">
-          <span class="text-sm font-black text-app-text">当前任务日志</span>
-          <span class="text-[10px] font-bold text-app-text-mute font-mono">DEBUG LOG</span>
-        </div>
-        
-        <!-- Scrollable specific logs -->
-        <div class="flex-1 p-6 overflow-y-auto space-y-2.5 custom-scrollbar bg-slate-950 text-slate-100 font-mono text-[10px] leading-relaxed select-text">
-          <div v-if="activeLogTask">
-            <div class="text-slate-400 font-bold border-b border-slate-800 pb-2 mb-3">
-              === 任务: {{ activeLogTask.name }} ===
-            </div>
-            <div v-if="activeLogTask.log.length === 0" class="text-slate-500 italic">
-              等待任务开始...
-            </div>
-            <div 
-              v-for="(msg, i) in activeLogTask.log" 
-              :key="i"
-              class="break-all border-l-2 pl-2 border-slate-700 hover:bg-slate-900/50 py-0.5 transition-colors"
-            >
-              {{ msg }}
-            </div>
-          </div>
-          <div v-else class="h-full flex items-center justify-center text-slate-500 italic text-center p-4">
-            在左侧点击任务卡片<br />可实时查看单项解压日志
-          </div>
-        </div>
-      </div>
-
     </div>
 
     <!-- Bottom Collapsible Global Console Terminal -->
     <div 
-      class="border-t border-app-border bg-app-surface/90 backdrop-blur-md flex flex-col transition-all duration-500 shrink-0"
-      :style="{ height: isConsoleOpen ? '220px' : '44px' }"
+      class="absolute bottom-0 left-0 right-0 border-t border-app-border bg-app-surface/90 backdrop-blur-md flex flex-col transition-all duration-500 z-20"
+      :style="{ height: isConsoleOpen ? '60%' : '44px' }"
     >
       <!-- Console Header Toggle -->
       <div 
