@@ -65,21 +65,21 @@ const settingGroups: SettingGroup[] = [
   {
     id: "tools",
     title: "解压引擎配置",
-    description: "配置 7-Zip 或 Bandizip 的路径及首选解压工具。",
+    description: "配置 7-Zip 或 Bandizip 的目录及首选解压工具。",
     color: "#0ea5e9",
     items: [
       {
-        id: "sevenZipPath",
+        id: "sevenZipDir",
         type: "input",
-        label: "7-Zip 可执行文件路径 (7z.exe)",
-        description: "通常位于 C:\\Program Files\\7-Zip\\7z.exe，为空则默认自动检测",
+        label: "7-Zip 安装目录",
+        description: "通常位于 C:\\Program Files\\7-Zip，为空则默认自动检测",
         defaultValue: "",
       },
       {
-        id: "bandizipPath",
+        id: "bandizipDir",
         type: "input",
-        label: "Bandizip 命令行路径 (bc.exe)",
-        description: "通常位于 C:\\Program Files\\Bandizip\\bc.exe，为空则默认自动检测",
+        label: "Bandizip 安装目录",
+        description: "通常位于 C:\\Program Files\\Bandizip，为空则默认自动检测",
         defaultValue: "",
       },
       {
@@ -128,12 +128,40 @@ const detectedToolsState = reactive({
   bandizip: false,
 });
 
+// 辅助函数：从完整 exe 路径提取其所在的目录
+function getDirectoryOfPath(filePath: string): string {
+  if (!filePath) return "";
+  let s = filePath.trim();
+  if (s.startsWith('"') && s.endsWith('"') && s.length >= 2) {
+    s = s.slice(1, -1);
+  }
+  s = s.trim();
+  if (!s.includes("/") && !s.includes("\\")) {
+    return "";
+  }
+  const normalized = s.replace(/\\/g, "/");
+  const lastSlash = normalized.lastIndexOf("/");
+  if (lastSlash > -1) {
+    return s.substring(0, lastSlash);
+  }
+  return s;
+}
+
 // 加载和保存配置
 const loadSettings = async () => {
   const saved = localStorage.getItem("unzip_nest_settings");
   if (saved) {
     try {
       const parsed = JSON.parse(saved);
+      // 兼容旧的 exe 路径配置
+      if (parsed.sevenZipPath && !parsed.sevenZipDir) {
+        parsed.sevenZipDir = getDirectoryOfPath(parsed.sevenZipPath);
+      }
+      if (parsed.bandizipPath && !parsed.bandizipDir) {
+        parsed.bandizipDir = getDirectoryOfPath(parsed.bandizipPath);
+      }
+      delete parsed.sevenZipPath;
+      delete parsed.bandizipPath;
       Object.assign(appSettings, parsed);
     } catch (e) {
       console.error(e);
@@ -146,12 +174,12 @@ const loadSettings = async () => {
     detectedToolsState.sevenZip = !!detected.seven_zip;
     detectedToolsState.bandizip = !!detected.bandizip;
 
-    // 如果还没有手动配置过路径，自动填入检测到的路径
-    if (!appSettings.sevenZipPath && detected.seven_zip) {
-      appSettings.sevenZipPath = detected.seven_zip;
+    // 如果还没有手动配置过目录，自动填入检测到的目录
+    if (!appSettings.sevenZipDir && detected.seven_zip) {
+      appSettings.sevenZipDir = getDirectoryOfPath(detected.seven_zip);
     }
-    if (!appSettings.bandizipPath && detected.bandizip) {
-      appSettings.bandizipPath = detected.bandizip;
+    if (!appSettings.bandizipDir && detected.bandizip) {
+      appSettings.bandizipDir = getDirectoryOfPath(detected.bandizip);
     }
     
     // 如果首选引擎还未设置过，或者首选的工具不可用，自动推荐一个可用的
@@ -294,12 +322,13 @@ const startBulkExtraction = async () => {
 
   // 检查引擎路径配置
   const exeType = appSettings.preferredTool;
-  const exePath = exeType === "7z" ? appSettings.sevenZipPath : appSettings.bandizipPath;
+  const exePath = exeType === "7z" ? appSettings.sevenZipDir : appSettings.bandizipDir;
 
-  if (!exePath) {
+  const detectedAvailable = exeType === "7z" ? detectedToolsState.sevenZip : detectedToolsState.bandizip;
+  if (!exePath && !detectedAvailable) {
     showSettings.value = true;
-    addLog("系统", `错误: 未配置或未检测到 ${exeType === "7z" ? "7-Zip" : "Bandizip"} 的可执行程序路径。请先在设置中配置！`, "error");
-    alert(`请先在右上角设置中配置 ${exeType === "7z" ? "7-Zip" : "Bandizip"} 的安装路径！`);
+    addLog("系统", `错误: 未配置或未检测到 ${exeType === "7z" ? "7-Zip" : "Bandizip"} 的安装目录。请先在设置中配置！`, "error");
+    alert(`请先在右上角设置中配置 ${exeType === "7z" ? "7-Zip" : "Bandizip"} 的安装目录！`);
     return;
   }
 

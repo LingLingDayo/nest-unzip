@@ -38,6 +38,86 @@ fn is_command_available(cmd: &str) -> bool {
         .unwrap_or(false)
 }
 
+fn clean_path(path: &str) -> String {
+    let mut s = path.trim().to_string();
+    if s.starts_with('"') && s.ends_with('"') && s.len() >= 2 {
+        s.remove(0);
+        s.pop();
+    }
+    s.trim().to_string()
+}
+
+fn resolve_exe_path(dir_or_path: &str, exe_type: &str) -> Option<String> {
+    let cleaned = clean_path(dir_or_path);
+    
+    // 如果为空，执行自动检测
+    if cleaned.is_empty() {
+        if exe_type == "7z" {
+            if is_command_available("7z") {
+                return Some("7z".to_string());
+            }
+            let paths = [
+                "C:\\Program Files\\7-Zip\\7z.exe",
+                "C:\\Program Files (x86)\\7-Zip\\7z.exe",
+            ];
+            for p in &paths {
+                if Path::new(p).exists() {
+                    return Some(p.to_string());
+                }
+            }
+        } else {
+            if is_command_available("bc") {
+                return Some("bc".to_string());
+            }
+            let paths = [
+                "C:\\Program Files\\Bandizip\\bc.exe",
+                "C:\\Program Files\\Bandizip\\Bandizip.exe",
+                "C:\\Program Files (x86)\\Bandizip\\bc.exe",
+            ];
+            for p in &paths {
+                if Path::new(p).exists() {
+                    return Some(p.to_string());
+                }
+            }
+        }
+        return None;
+    }
+    
+    let path = Path::new(&cleaned);
+    
+    // 1. 如果本身是一个存在的文件，直接返回
+    if path.is_file() && path.exists() {
+        return Some(cleaned);
+    }
+    
+    // 2. 如果是目录，在里面寻找对应的 exe
+    let exe_names = if exe_type == "7z" {
+        vec!["7z.exe", "7Z.exe"]
+    } else {
+        vec!["bc.exe", "Bandizip.exe", "BC.exe", "BANDIZIP.exe"]
+    };
+    
+    for name in &exe_names {
+        let exe_path = path.join(name);
+        if exe_path.exists() {
+            return Some(exe_path.to_string_lossy().to_string());
+        }
+    }
+    
+    // 3. 兜底：如果不是目录但可能是个去掉 .exe 结尾的路径，尝试拼接寻找
+    if !cleaned.to_lowercase().ends_with(".exe") {
+        for name in &exe_names {
+            let exe_path = path.join(name);
+            if exe_path.exists() {
+                return Some(exe_path.to_string_lossy().to_string());
+            }
+        }
+    }
+    
+    // 4. 否则直接返回清理后的路径
+    Some(cleaned)
+}
+
 #[tauri::command]
 fn detect_tools() -> Result<DetectedTools, String> {
     let mut seven_zip = None;
@@ -225,6 +305,10 @@ fn run_extraction_flow(
     exe_path: String,
     exe_type: String,
 ) -> Result<(), String> {
+    let resolved_exe_path = resolve_exe_path(&exe_path, &exe_type).ok_or_else(|| {
+        format!("无法在配置的路径中找到 {} 的可执行文件", exe_type)
+    })?;
+
     let emit_log = |msg: &str, status: &str, progress: f32| {
         let _ = app_handle.emit(
             "extract-log",
@@ -266,7 +350,7 @@ fn run_extraction_flow(
     })?;
 
     if let Err(e) =
-        extract_single_archive(&exe_path, &exe_type, &archive_path, &target_dir, &passwords)
+        extract_single_archive(&resolved_exe_path, &exe_type, &archive_path, &target_dir, &passwords)
     {
         let err_msg = format!("第一层解压失败: {}", e);
         emit_log(&err_msg, "error", 100.0);
@@ -330,7 +414,7 @@ fn run_extraction_flow(
             );
 
             if let Err(e) =
-                extract_single_archive(&exe_path, &exe_type, &sub_archive, &parent_dir, &passwords)
+                extract_single_archive(&resolved_exe_path, &exe_type, &sub_archive, &parent_dir, &passwords)
             {
                 let err_msg = format!("解压嵌套子包 {} 失败: {}", filename, e);
                 emit_log(&err_msg, "error", 100.0);
@@ -390,7 +474,18 @@ fn extract_archive(
         };
     }
 
-    match extract_single_archive(&exe_path, &exe_type, &archive_path, &target_dir, &passwords) {
+    let resolved_exe_path = match resolve_exe_path(&exe_path, &exe_type) {
+        Some(path) => path,
+        None => {
+            return ExtractResult {
+                success: false,
+                error_type: "Other".to_string(),
+                message: format!("无法定位 {} 的可执行文件，请检查路径配置", exe_type),
+            };
+        }
+    };
+
+    match extract_single_archive(&resolved_exe_path, &exe_type, &archive_path, &target_dir, &passwords) {
         Ok(_) => ExtractResult {
             success: true,
             error_type: "None".to_string(),
