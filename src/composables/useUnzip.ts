@@ -189,7 +189,8 @@ export function useUnzip(
         : Array.from(new Set(globalPwds));
       let lastInputPwd: string | null = null;
 
-      addLog(task.name, "解压缩流程初始化...");
+      addLog(task.name, `解压缩流程初始化... (文件路径: ${task.path}, 目标目录: ${task.targetDir})`);
+      addLog(task.name, `合并密码池完成，共 ${mergedPasswords.length} 个备选密码已就绪`);
 
       let dirExistedBefore = false;
       let initialEntries: string[] = [];
@@ -197,21 +198,28 @@ export function useUnzip(
         dirExistedBefore = await invoke<boolean>("path_exists", { path: task.targetDir });
         if (dirExistedBefore) {
           initialEntries = await invoke<string[]>("scan_dir_entries", { dirPath: task.targetDir });
+          addLog(task.name, `目标目录已存在，扫描到 ${initialEntries.length} 个已有文件，解压后将保留它们。`, "info");
+        } else {
+          addLog(task.name, `目标目录不存在，将在解压时自动创建: ${task.targetDir}`, "info");
         }
       } catch (e) {
         console.error(e);
+        addLog(task.name, `检查目标目录出错: ${e}`, "error");
       }
 
       const cleanupOnError = async () => {
-        addLog(task.name, "正在清理中间产物到回收站...", "info");
+        addLog(task.name, `正在清理中间产物到回收站 (目标目录: ${task.targetDir})...`, "info");
         try {
           if (!dirExistedBefore) {
             await invoke("trash_path", { path: task.targetDir });
+            addLog(task.name, `已清理创建的目标文件夹: ${task.targetDir}`, "info");
           } else {
             const currentEntries = await invoke<string[]>("scan_dir_entries", { dirPath: task.targetDir });
             const addedEntries = currentEntries.filter(item => !initialEntries.includes(item));
+            addLog(task.name, `扫描到 ${addedEntries.length} 个新增的临时中间文件，准备清理...`, "info");
             for (const entry of addedEntries) {
               await invoke("trash_path", { path: entry });
+              addLog(task.name, `已成功清理临时产物: ${entry.split(/[\\/]/).pop() || entry}`, "info");
             }
           }
         } catch (err) {
@@ -224,7 +232,7 @@ export function useUnzip(
         let depth = 1;
         const maxDepth = 20;
 
-        addLog(task.name, "开始第一层解压...", "info");
+        addLog(task.name, `开始第一层解包流程 (源文件: ${task.name})...`, "info");
 
         while (queue.length > 0) {
           if (depth > maxDepth) {
@@ -234,7 +242,10 @@ export function useUnzip(
           const currentLevelArchives = [...queue];
           queue = [];
 
-          addLog(task.name, `第 ${depth} 层：开始解压 ${currentLevelArchives.length} 个文件...`, "info");
+          addLog(task.name, `第 ${depth} 层：开始解包 ${currentLevelArchives.length} 个文件...`, "info");
+          for (const item of currentLevelArchives) {
+            addLog(task.name, ` -> 待解压队列成员: ${item.split(/[\\/]/).pop() || item}`, "info");
+          }
 
           for (const subArchive of currentLevelArchives) {
             const filename = subArchive.split(/[\\/]/).pop() || "未知压缩包";
@@ -247,6 +258,7 @@ export function useUnzip(
             
             let isExtracted = false;
             while (!isExtracted) {
+              addLog(task.name, `尝试解压: ${filename} -> ${currentTargetDir} (已配置密码池包含 ${mergedPasswords.length} 个密码)`, "info");
               const result = await invoke<{ success: boolean; errorType: string; message: string }>("extract_archive", {
                 exePath: exePath,
                 exeType: exeType,
@@ -257,8 +269,10 @@ export function useUnzip(
 
               if (result.success) {
                 isExtracted = true;
+                addLog(task.name, `成功解压文件: ${filename}`, "success");
                 if (subArchive !== task.path) {
                   await invoke("trash_path", { path: subArchive });
+                  addLog(task.name, `已清理临时源文件: ${filename}`, "info");
                 }
                 
                 // 只有成功解压时，才将最新手动输入的有效密码追加到专属密码框
@@ -270,15 +284,18 @@ export function useUnzip(
                   if (!currentPwds.includes(lastInputPwd)) {
                     currentPwds.push(lastInputPwd);
                     task.passwords = currentPwds.join(" ");
+                    addLog(task.name, `已将本次手动输入成功的密码保存至该任务的专属密码中`, "info");
                   }
                   lastInputPwd = null; // 重置本轮输入记录
                 }
               } else {
                 if (result.errorType === "PasswordRequired") {
+                  addLog(task.name, `解压失败: 文件 [${filename}] 密码不正确或缺失，当前密码池已穷尽。`, "error");
                   if (!passwordModalRef.value) {
                     throw new Error("密码弹窗组件未挂载，解包终止");
                   }
 
+                  addLog(task.name, `正在呼叫用户输入密码...`, "info");
                   const newPassword = await passwordModalRef.value.open({
                     title: "输入解压密码",
                     message: `文件 [${filename}] 已加密，请输入正确的解压密码：`,
@@ -286,17 +303,21 @@ export function useUnzip(
                   });
 
                   if (newPassword === null) {
+                    addLog(task.name, `用户取消了密码输入，将终止此解压任务`, "error");
                     throw new Error("USER_CANCEL");
                   } else if (newPassword.trim() === "") {
+                    addLog(task.name, `输入了空密码，重新请求输入...`, "info");
                     continue;
                   } else {
                     const trimmedPwd = newPassword.trim();
+                    addLog(task.name, `收到手动输入的密码，将其加入密码池优先重试`, "info");
                     if (!mergedPasswords.includes(trimmedPwd)) {
                       mergedPasswords = [trimmedPwd, ...mergedPasswords];
                     }
                     lastInputPwd = trimmedPwd; // 暂存本轮输入
                   }
                 } else {
+                  addLog(task.name, `解压底层引擎报错: ${result.message}`, "error");
                   throw new Error(result.message);
                 }
               }
@@ -305,7 +326,11 @@ export function useUnzip(
 
           const found = await invoke<string[]>("scan_archives", { dirPath: task.targetDir });
           if (found && found.length > 0) {
+            const foundNames = found.map(item => item.split(/[\\/]/).pop());
+            addLog(task.name, `在当前层发现 ${found.length} 个嵌套的下一层压缩包: ${foundNames.join(", ")}，加入待解压队列。`, "info");
             queue.push(...found);
+          } else {
+            addLog(task.name, `在当前层未发现新的嵌套压缩包`, "info");
           }
 
           const currentProgress = 35 + (depth * 5);
@@ -318,7 +343,7 @@ export function useUnzip(
 
         task.status = "success";
         task.progress = 100;
-        addLog(task.name, "解压缩成功，已成功清理所有中间压缩包！", "success");
+        addLog(task.name, `解压缩成功！共处理了 ${depth} 层嵌套包，已自动清理所有中间源文件！输出目录: ${task.targetDir}`, "success");
         
         if (appSettings.autoOpen) {
           openPath(task.targetDir).catch((err) => {
@@ -330,9 +355,9 @@ export function useUnzip(
         task.status = "error";
         task.progress = 100;
         if (e.message === "USER_CANCEL") {
-          addLog(task.name, "用户取消了解压缩", "error");
+          addLog(task.name, "解包终止：用户取消了密码输入", "error");
         } else {
-          addLog(task.name, `任务失败: ${e.message || e}`, "error");
+          addLog(task.name, `解压缩任务失败: ${e.message || e}，正在执行错误回滚...`, "error");
         }
         await cleanupOnError();
       }

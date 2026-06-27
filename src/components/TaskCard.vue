@@ -37,9 +37,9 @@ const emit = defineEmits<{
       </div>
 
       <!-- Task Status Pill -->
-      <div class="flex items-center gap-2">
+      <div class="flex items-center gap-2 shrink-0">
         <span 
-          class="text-[9px] font-black uppercase tracking-wider px-2 py-0.5 rounded-full"
+          class="text-[9px] font-black uppercase tracking-wider px-2 py-0.5 rounded-full whitespace-nowrap"
           :class="{
             'bg-app-bg text-app-text-mute': task.status === 'pending',
             'bg-app-primary-light text-app-primary animate-pulse': task.status === 'running',
