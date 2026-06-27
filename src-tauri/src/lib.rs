@@ -16,7 +16,8 @@ pub fn run() {
             commands::trash_path,
             commands::delete_path,
             commands::path_exists,
-            commands::scan_dir_entries
+            commands::scan_dir_entries,
+            commands::flatten_single_subdir
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

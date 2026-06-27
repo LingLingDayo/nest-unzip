@@ -150,3 +150,126 @@ pub fn clean_path(path: &str) -> String {
     }
     s.trim().to_string()
 }
+
+/// 如果目录下有且仅有一个子目录且无其他内容，将该子目录内容提升至顶层，并删除空子目录。
+/// 该过程会循环进行直到不满足条件。
+pub fn flatten_single_subdir(dir_path: &str) -> Result<(), String> {
+    use std::fs;
+    use std::path::Path;
+    use std::time::{SystemTime, UNIX_EPOCH};
+
+    let dir = Path::new(dir_path);
+    if !dir.is_dir() {
+        return Err(format!("路径不是一个目录: {}", dir_path));
+    }
+
+    loop {
+        let mut entries = Vec::new();
+        let read_dir_result =
+            fs::read_dir(dir).map_err(|e| format!("无法读取目录 {}: {}", dir_path, e))?;
+        for entry in read_dir_result {
+            let entry = entry.map_err(|e| format!("读取目录项失败: {}", e))?;
+            let file_name = entry.file_name();
+            let name_str = file_name.to_string_lossy();
+            if name_str.starts_with('.')
+                || name_str.eq_ignore_ascii_case("thumbs.db")
+                || name_str.eq_ignore_ascii_case("desktop.ini")
+            {
+                continue;
+            }
+            entries.push(entry);
+        }
+
+        if entries.len() != 1 {
+            break;
+        }
+
+        let single_entry = &entries[0];
+        let sub_dir_path = single_entry.path();
+        if !sub_dir_path.is_dir() {
+            break;
+        }
+
+        let nanos = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .map(|d| d.as_nanos())
+            .unwrap_or(0);
+        let temp_dir_name = format!("temp_flatten_{}", nanos);
+        let temp_dir_path = dir.join(&temp_dir_name);
+
+        fs::rename(&sub_dir_path, &temp_dir_path)
+            .map_err(|e| format!("重命名子目录 {:?} 到临时目录失败: {}", sub_dir_path, e))?;
+
+        let read_temp_result =
+            fs::read_dir(&temp_dir_path).map_err(|e| format!("读取临时目录失败: {}", e))?;
+
+        for entry in read_temp_result {
+            let entry = entry.map_err(|e| format!("读取临时目录项失败: {}", e))?;
+            let entry_path = entry.path();
+            if let Some(file_name) = entry_path.file_name() {
+                let dest_path = dir.join(file_name);
+                fs::rename(&entry_path, &dest_path).map_err(|e| {
+                    format!("移动文件 {:?} 到 {:?} 失败: {}", entry_path, dest_path, e)
+                })?;
+            }
+        }
+
+        fs::remove_dir(&temp_dir_path)
+            .map_err(|e| format!("删除临时空目录 {:?} 失败: {}", temp_dir_path, e))?;
+    }
+
+    Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::fs;
+
+    #[test]
+    fn test_flatten_single_subdir() {
+        let temp_dir = std::env::temp_dir().join("test_flatten_unzip");
+        if temp_dir.exists() {
+            let _ = fs::remove_dir_all(&temp_dir);
+        }
+        fs::create_dir_all(&temp_dir).unwrap();
+
+        // 构造嵌套结构:
+        // temp_dir
+        // - sub_1
+        //   - .DS_Store (隐藏垃圾文件，应该被忽略以允许 sub_2 提升)
+        //   - sub_2
+        //     - file1.txt
+        //     - file2.txt
+        // - desktop.ini (顶层隐藏垃圾文件，应该被忽略以允许 sub_1 提升)
+        let sub_1 = temp_dir.join("sub_1");
+        let sub_2 = sub_1.join("sub_2");
+        fs::create_dir_all(&sub_2).unwrap();
+
+        fs::write(sub_2.join("file1.txt"), "hello").unwrap();
+        fs::write(sub_2.join("file2.txt"), "world").unwrap();
+        fs::write(sub_1.join(".DS_Store"), "garbage").unwrap();
+        fs::write(temp_dir.join("desktop.ini"), "sysinfo").unwrap();
+
+        // 运行提升
+        let res = flatten_single_subdir(temp_dir.to_str().unwrap());
+        assert!(res.is_ok());
+
+        // 提升后应该直接是:
+        // temp_dir
+        // - file1.txt
+        // - file2.txt
+        // - .DS_Store (从 sub_1 转移上来)
+        // - desktop.ini
+        // sub_1 和 sub_2 应该都被删除
+        assert!(temp_dir.join("file1.txt").exists());
+        assert!(temp_dir.join("file2.txt").exists());
+        assert!(temp_dir.join(".DS_Store").exists());
+        assert!(temp_dir.join("desktop.ini").exists());
+        assert!(!sub_1.exists());
+        assert!(!sub_2.exists());
+
+        // 清理
+        let _ = fs::remove_dir_all(&temp_dir);
+    }
+}

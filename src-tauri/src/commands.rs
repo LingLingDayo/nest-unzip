@@ -234,3 +234,8 @@ pub async fn run_depth_extraction(
         exe_type,
     )
 }
+
+#[tauri::command]
+pub async fn flatten_single_subdir(dir_path: String) -> Result<(), String> {
+    crate::utils::flatten_single_subdir(&dir_path)
+}

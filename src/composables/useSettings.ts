@@ -65,8 +65,16 @@ export const settingGroups: SettingGroup[] = [
         description: "解压成功（嵌套包）或解压失败回滚时，直接物理删除中间文件，不再放入回收站。",
         defaultValue: false,
       },
+      {
+        id: "flattenSingleSubdir",
+        type: "switch",
+        label: "自动提升单子目录",
+        description: "解压后如果仅有一个子目录且无其他同级内容，将子目录内容提升至顶层文件夹。",
+        defaultValue: true,
+      },
     ],
   },
+
 ];
 
 function getDirectoryOfPath(filePath: string): string {

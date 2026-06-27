@@ -29,6 +29,28 @@ export function useUnzip(
   const tasks = ref<ExtractTask[]>([]);
   const isProcessing = ref(false);
 
+  const finalizeExtraction = async (task: ExtractTask, logSuccessDetail: string) => {
+    if (appSettings.flattenSingleSubdir) {
+      addLog(task.name, "正在检查并整理单子目录...", "info");
+      try {
+        await invoke("flatten_single_subdir", { dirPath: task.targetDir });
+        addLog(task.name, "单子目录提升整理完成！", "info");
+      } catch (err) {
+        addLog(task.name, `整理单子目录时出错: ${err}`, "error");
+      }
+    }
+
+    task.status = "success";
+    task.progress = 100;
+    addLog(task.name, logSuccessDetail, "success");
+
+    if (appSettings.autoOpen) {
+      openPath(task.targetDir).catch((err) => {
+        addLog(task.name, `自动打开目标文件夹失败: ${err}`, "error");
+      });
+    }
+  };
+
   function parsePath(fullPath: string) {
     const normalized = fullPath.replace(/\\/g, "/");
     const lastSlash = normalized.lastIndexOf("/");
@@ -346,15 +368,8 @@ export function useUnzip(
           }
         }
 
-        task.status = "success";
-        task.progress = 100;
-        addLog(task.name, `解压缩成功！共处理了 ${depth} 层嵌套包，已自动清理所有中间源文件！输出目录: ${task.targetDir}`, "success");
-        
-        if (appSettings.autoOpen) {
-          openPath(task.targetDir).catch((err) => {
-            addLog(task.name, `自动打开目标文件夹失败: ${err}`, "error");
-          });
-        }
+        await finalizeExtraction(task, `解压缩成功！共处理了 ${depth} 层嵌套包，已自动清理所有中间源文件！输出目录: ${task.targetDir}`);
+
 
       } catch (e: any) {
         task.status = "error";
@@ -384,24 +399,19 @@ export function useUnzip(
         const task = tasks.value.find((t) => t.id === task_id);
 
         if (task) {
-          task.progress = progress;
-          task.status = status;
-
-          let logType: "info" | "success" | "error" = "info";
           if (status === "success") {
-            logType = "success";
-            addLog(task.name, `[成功] ${message}`, logType);
-            
-            if (appSettings.autoOpen) {
-              openPath(task.targetDir).catch((err) => {
-                addLog(task.name, `自动打开目标文件夹失败: ${err}`, "error");
-              });
-            }
-          } else if (status === "error") {
-            logType = "error";
-            addLog(task.name, `[失败] ${message}`, logType);
+            finalizeExtraction(task, `[成功] ${message}`);
           } else {
-            addLog(task.name, message, logType);
+            task.progress = progress;
+            task.status = status;
+
+            let logType: "info" | "success" | "error" = "info";
+            if (status === "error") {
+              logType = "error";
+              addLog(task.name, `[失败] ${message}`, logType);
+            } else {
+              addLog(task.name, message, logType);
+            }
           }
         }
       });
