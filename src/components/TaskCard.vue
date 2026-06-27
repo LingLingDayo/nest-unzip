@@ -81,8 +81,8 @@ const emit = defineEmits<{
       <!-- Password settings -->
       <div class="flex flex-col gap-1">
         <span class="font-black text-app-text-dim flex items-center gap-1">
-          <span>专属解压密码</span>
-          <span class="text-[9px] font-medium opacity-50">(可不填，多个用逗号隔开)</span>
+          <span>解压密码</span>
+          <span class="text-[9px] font-medium opacity-50">(可不填，多个用空格隔开)</span>
         </span>
         <input 
           type="password"

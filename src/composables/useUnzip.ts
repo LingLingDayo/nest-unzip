@@ -169,7 +169,7 @@ export function useUnzip(
         .filter((s) => s.length > 0);
       
       const taskPwds = (task.passwords || "")
-        .split(/[,,，\s]/)
+        .split(" ")
         .map((s) => s.trim())
         .filter((s) => s.length > 0);
 
@@ -251,12 +251,12 @@ export function useUnzip(
                 // 只有成功解压时，才将最新手动输入的有效密码追加到专属密码框
                 if (lastInputPwd) {
                   const currentPwds = (task.passwords || "")
-                    .split(/[,,，\s]/)
+                    .split(" ")
                     .map((s) => s.trim())
                     .filter((s) => s.length > 0);
                   if (!currentPwds.includes(lastInputPwd)) {
                     currentPwds.push(lastInputPwd);
-                    task.passwords = currentPwds.join(", ");
+                    task.passwords = currentPwds.join(" ");
                   }
                   lastInputPwd = null; // 重置本轮输入记录
                 }
