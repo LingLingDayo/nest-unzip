@@ -9,7 +9,7 @@ use std::path::Path;
 use crate::utils::query_registry;
 
 #[tauri::command]
-pub fn detect_tools() -> Result<DetectedTools, String> {
+pub async fn detect_tools() -> Result<DetectedTools, String> {
     let mut seven_zip = None;
     let mut bandizip = None;
 
@@ -101,7 +101,7 @@ pub fn detect_tools() -> Result<DetectedTools, String> {
 }
 
 #[tauri::command]
-pub fn extract_archive(
+pub async fn extract_archive(
     exe_path: String,
     exe_type: String,
     archive_path: String,
@@ -167,12 +167,12 @@ pub fn extract_archive(
 }
 
 #[tauri::command]
-pub fn scan_archives(dir_path: String) -> Result<Vec<String>, String> {
+pub async fn scan_archives(dir_path: String) -> Result<Vec<String>, String> {
     find_archives_in_dir(&dir_path)
 }
 
 #[tauri::command]
-pub fn trash_path(path: String) -> Result<(), String> {
+pub async fn trash_path(path: String) -> Result<(), String> {
     let p = Path::new(&path);
     if p.exists() {
         trash::delete(p).map_err(|e| format!("移入回收站失败: {}", e))?;
@@ -181,7 +181,7 @@ pub fn trash_path(path: String) -> Result<(), String> {
 }
 
 #[tauri::command]
-pub fn delete_path(path: String) -> Result<(), String> {
+pub async fn delete_path(path: String) -> Result<(), String> {
     let p = Path::new(&path);
     if p.exists() {
         if p.is_dir() {
@@ -194,12 +194,12 @@ pub fn delete_path(path: String) -> Result<(), String> {
 }
 
 #[tauri::command]
-pub fn path_exists(path: String) -> bool {
+pub async fn path_exists(path: String) -> bool {
     Path::new(&path).exists()
 }
 
 #[tauri::command]
-pub fn scan_dir_entries(dir_path: String) -> Result<Vec<String>, String> {
+pub async fn scan_dir_entries(dir_path: String) -> Result<Vec<String>, String> {
     let mut entries = Vec::new();
     let path = Path::new(&dir_path);
     if path.is_dir() {
@@ -214,7 +214,7 @@ pub fn scan_dir_entries(dir_path: String) -> Result<Vec<String>, String> {
 }
 
 #[tauri::command]
-pub fn run_depth_extraction(
+pub async fn run_depth_extraction(
     app_handle: tauri::AppHandle,
     task_id: String,
     archive_path: String,
