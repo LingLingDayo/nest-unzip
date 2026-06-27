@@ -14,6 +14,7 @@ pub fn run() {
             commands::extract_archive,
             commands::scan_archives,
             commands::trash_path,
+            commands::delete_path,
             commands::path_exists,
             commands::scan_dir_entries
         ])

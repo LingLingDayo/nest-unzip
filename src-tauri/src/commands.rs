@@ -181,6 +181,19 @@ pub fn trash_path(path: String) -> Result<(), String> {
 }
 
 #[tauri::command]
+pub fn delete_path(path: String) -> Result<(), String> {
+    let p = Path::new(&path);
+    if p.exists() {
+        if p.is_dir() {
+            std::fs::remove_dir_all(p).map_err(|e| format!("物理删除文件夹失败: {}", e))?;
+        } else {
+            std::fs::remove_file(p).map_err(|e| format!("物理删除文件失败: {}", e))?;
+        }
+    }
+    Ok(())
+}
+
+#[tauri::command]
 pub fn path_exists(path: String) -> bool {
     Path::new(&path).exists()
 }

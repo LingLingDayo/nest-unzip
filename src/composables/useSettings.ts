@@ -58,6 +58,13 @@ export const settingGroups: SettingGroup[] = [
         description: "任务成功解压完毕后，在文件资源管理器中打开目标目录。",
         defaultValue: true,
       },
+      {
+        id: "deletePermanently",
+        type: "switch",
+        label: "完全删除中间产物（不移入回收站）",
+        description: "解压成功（嵌套包）或解压失败回滚时，直接物理删除中间文件，不再放入回收站。",
+        defaultValue: false,
+      },
     ],
   },
 ];

@@ -208,17 +208,21 @@ export function useUnzip(
       }
 
       const cleanupOnError = async () => {
-        addLog(task.name, `正在清理中间产物到回收站 (目标目录: ${task.targetDir})...`, "info");
+        const deletePermanently = !!appSettings.deletePermanently;
+        const actionName = deletePermanently ? "正在完全删除中间产物" : "正在清理中间产物到回收站";
+        const command = deletePermanently ? "delete_path" : "trash_path";
+
+        addLog(task.name, `${actionName} (目标目录: ${task.targetDir})...`, "info");
         try {
           if (!dirExistedBefore) {
-            await invoke("trash_path", { path: task.targetDir });
+            await invoke(command, { path: task.targetDir });
             addLog(task.name, `已清理创建的目标文件夹: ${task.targetDir}`, "info");
           } else {
             const currentEntries = await invoke<string[]>("scan_dir_entries", { dirPath: task.targetDir });
             const addedEntries = currentEntries.filter(item => !initialEntries.includes(item));
             addLog(task.name, `扫描到 ${addedEntries.length} 个新增的临时中间文件，准备清理...`, "info");
             for (const entry of addedEntries) {
-              await invoke("trash_path", { path: entry });
+              await invoke(command, { path: entry });
               addLog(task.name, `已成功清理临时产物: ${entry.split(/[\\/]/).pop() || entry}`, "info");
             }
           }
@@ -271,7 +275,8 @@ export function useUnzip(
                 isExtracted = true;
                 addLog(task.name, `成功解压文件: ${filename}`, "success");
                 if (subArchive !== task.path) {
-                  await invoke("trash_path", { path: subArchive });
+                  const command = appSettings.deletePermanently ? "delete_path" : "trash_path";
+                  await invoke(command, { path: subArchive });
                   addLog(task.name, `已清理临时源文件: ${filename}`, "info");
                 }
                 
