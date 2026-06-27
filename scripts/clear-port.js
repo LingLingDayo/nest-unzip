@@ -6,9 +6,12 @@ const PORT = 1420;
 function cleanProcesses() {
   try {
     if (process.platform === 'win32') {
-      // 1. 强行结束所有残留的 tauri-app.exe 进程
+      // 1. 强行结束所有残留的 tauri-app.exe 和 nest-unzip.exe 进程
       try {
         execSync('taskkill /F /IM tauri-app.exe', { stdio: 'ignore' });
+      } catch (e) {}
+      try {
+        execSync('taskkill /F /IM nest-unzip.exe', { stdio: 'ignore' });
       } catch (e) {
         // 忽略找不到进程的错误
       }
@@ -46,6 +49,9 @@ function cleanProcesses() {
       // Unix 平台清理
       try {
         execSync('pkill -9 tauri-app', { stdio: 'ignore' });
+      } catch (e) {}
+      try {
+        execSync('pkill -9 nest-unzip', { stdio: 'ignore' });
       } catch (e) {}
       try {
         const pids = execSync(`lsof -t -i:${PORT}`, { encoding: 'utf8' }).trim().split('\n');

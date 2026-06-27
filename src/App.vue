@@ -51,11 +51,7 @@ onMounted(async () => {
     <header class="h-16 border-b border-app-border bg-app-surface/60 backdrop-blur-md px-8 flex items-center justify-between z-10 shrink-0">
       <div class="flex items-center gap-3">
         <!-- Main Logo / Icon -->
-        <div class="w-9 h-9 rounded-2xl bg-gradient-to-tr from-app-primary to-app-purple flex items-center justify-center shadow-lg shadow-app-primary/20">
-          <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z" />
-          </svg>
-        </div>
+        <img src="./assets/logo.png" alt="NestUnzip Logo" class="w-9 h-9 object-contain select-none pointer-events-none" />
         <div>
           <h1 class="text-lg font-black tracking-tight text-app-text flex items-center gap-2">
             NestUnzip <span class="text-[10px] font-black uppercase text-app-primary bg-app-primary-light px-2 py-0.5 rounded-full tracking-wider border border-app-primary/10">v{{ pkg.version }}</span>
