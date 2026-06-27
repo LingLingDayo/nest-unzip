@@ -15,8 +15,10 @@ pub fn is_command_available(cmd: &str) -> bool {
     } else {
         "which"
     };
-    Command::new(check_cmd)
-        .arg(cmd)
+    let mut command = Command::new(check_cmd);
+    command.arg(cmd);
+    hide_window(&mut command);
+    command
         .output()
         .map(|o| o.status.success())
         .unwrap_or(false)
