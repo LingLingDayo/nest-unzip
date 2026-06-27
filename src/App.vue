@@ -10,6 +10,7 @@ import SettingsModal from "./components/common/SettingsModal/SettingsModal.vue";
 import PasswordModal from "./components/common/PasswordModal.vue";
 import type { SettingGroup } from "./components/common/SettingsModal/types";
 import { extractDefaultSettings } from "./components/common/SettingsModal/utils";
+import pkg from "../package.json";
 
 const passwordModalRef = ref<InstanceType<typeof PasswordModal> | null>(null);
 
@@ -87,8 +88,8 @@ const settingGroups: SettingGroup[] = [
         description: "系统将优先使用该工具执行解压缩任务。",
         defaultValue: "7z",
         options: [
-          { label: "7-Zip (7z.exe)", value: "7z" },
-          { label: "Bandizip (bc.exe)", value: "bandizip" },
+          { label: "7-Zip", value: "7z" },
+          { label: "Bandizip", value: "bandizip" },
         ],
       },
     ],
@@ -582,7 +583,7 @@ onUnmounted(() => {
         </div>
         <div>
           <h1 class="text-lg font-black tracking-tight text-app-text flex items-center gap-2">
-            NestUnzip <span class="text-[10px] font-black uppercase text-app-primary bg-app-primary-light px-2 py-0.5 rounded-full tracking-wider border border-app-primary/10">v2.1</span>
+            NestUnzip <span class="text-[10px] font-black uppercase text-app-primary bg-app-primary-light px-2 py-0.5 rounded-full tracking-wider border border-app-primary/10">v{{ pkg.version }}</span>
           </h1>
           <p class="text-[10px] text-app-text-mute font-medium">深度嵌套批量解压专家</p>
         </div>
