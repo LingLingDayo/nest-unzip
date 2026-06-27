@@ -1,0 +1,48 @@
+@import "tailwindcss";
+@theme {
+  /* 极致简约清新调色盘 - Apple/Linear 风格 */
+  /* 背景色: 极淡蓝灰，营造清爽氛围 */
+  --color-app-bg: #f8fafc;
+  --color-app-bg-gradient: linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%);
+  /* 表面色: 纯白，强调悬浮感 */
+  --color-app-surface: #ffffff;
+  --color-app-surface-hover: #f1f5f9;
+  --color-app-overlay: rgba(255, 255, 255, 0.7);
+  /* 边框色: 纤细且柔和 */
+  --color-app-border: #e2e8f0;
+  --color-app-border-focus: #cbd5e1;
+  /* 强调色: 宁静的天空蓝 */
+  --color-app-primary: #0ea5e9;
+  --color-app-primary-hover: #0284c7;
+  --color-app-primary-light: rgba(14, 165, 233, 0.08);
+  /* 辅助色: 清新配色 */
+  --color-app-purple: #8b5cf6;
+  /* 优雅紫 */
+  --color-app-emerald: #10b981;
+  /* 翡翠绿 */
+  --color-app-rose: #f43f5e;
+  /* 珊瑚红 */
+  --color-app-amber: #f59e0b;
+  /* 琥珀橙 */
+  /* 文本色: 高对比度但柔和 */
+  --color-app-text: #0f172a;
+  /* Slate 900 - 标题 */
+  --color-app-text-dim: #475569;
+  /* Slate 600 - 正文 */
+  --color-app-text-mute: #94a3b8;
+  /* Slate 400 - 弱化文字 */
+  /* 阴影: 多层弥散阴影，展现极其柔和的立体感 */
+  --shadow-app-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
+  --shadow-app-md:
+    0 4px 6px -1px rgba(0, 0, 0, 0.05), 0 2px 4px -2px rgba(0, 0, 0, 0.05);
+  --shadow-app-xl:
+    0 20px 25px -5px rgba(0, 0, 0, 0.04), 0 8px 10px -6px rgba(0, 0, 0, 0.04);
+}
+
+@layer base {
+  body {
+    background: var(--color-app-bg-gradient);
+    color: var(--color-app-text);
+    @apply font-sans antialiased min-h-screen selection:bg-app-primary/10 selection:text-app-primary;
+  }
+}
