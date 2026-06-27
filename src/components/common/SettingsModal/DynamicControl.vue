@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue';
+import { computed, ref, watch } from 'vue';
 import type { SettingItem } from './types';
 
 import { openUrl } from '@tauri-apps/plugin-opener';
@@ -24,6 +24,21 @@ const getOptValue = (opt: any) => {
 
 // Select 组件状态与逻辑
 const isSelectOpen = ref(false);
+const selectTriggerRef = ref<HTMLElement | null>(null);
+const placement = ref<'bottom' | 'top'>('bottom');
+
+watch(isSelectOpen, (isOpen) => {
+  if (isOpen && selectTriggerRef.value) {
+    const rect = selectTriggerRef.value.getBoundingClientRect();
+    const spaceBelow = window.innerHeight - rect.bottom;
+    // 下拉列表最大高度为 max-h-60，即 240px，加上间距等，判断 260px 空间
+    if (spaceBelow < 260 && rect.top > spaceBelow) {
+      placement.value = 'top';
+    } else {
+      placement.value = 'bottom';
+    }
+  }
+});
 
 const isMultiple = computed(() => {
   return props.config.type === 'select' && props.config.multiple;
@@ -185,6 +200,7 @@ const openExternalLink = async (url: string) => {
     <p v-if="config.description" class="text-[11px] text-app-text-mute pb-1 leading-relaxed italic opacity-80">{{ config.description }}</p>
     <div class="relative">
       <div 
+        ref="selectTriggerRef"
         @click="isSelectOpen = !isSelectOpen"
         class="w-full bg-app-surface border border-app-border rounded-xl px-4 py-2.5 text-[13px] font-medium shadow-app-sm cursor-pointer transition-all flex items-center justify-between"
         :class="[
@@ -206,17 +222,20 @@ const openExternalLink = async (url: string) => {
       
       <!-- 下拉列表 -->
       <transition 
-        enter-active-class="transition ease-out duration-200 origin-top" 
+        :enter-active-class="`transition ease-out duration-200 ${placement === 'top' ? 'origin-bottom' : 'origin-top'}`" 
         enter-from-class="opacity-0 scale-y-95" 
         enter-to-class="opacity-100 scale-y-100" 
-        leave-active-class="transition ease-in duration-150 origin-top" 
+        :leave-active-class="`transition ease-in duration-150 ${placement === 'top' ? 'origin-bottom' : 'origin-top'}`" 
         leave-from-class="opacity-100 scale-y-100" 
         leave-to-class="opacity-0 scale-y-95"
       >
         <div 
           v-if="isSelectOpen"
-          class="absolute z-50 w-full mt-2 bg-app-surface border border-app-border rounded-xl shadow-app-xl py-2 max-h-60 overflow-y-auto custom-scrollbar"
-          style="transform-origin: top"
+          class="absolute z-50 w-full bg-app-surface border border-app-border rounded-xl shadow-app-xl py-2 max-h-60 overflow-y-auto custom-scrollbar"
+          :class="[
+            placement === 'top' ? 'bottom-full mb-2' : 'top-full mt-2'
+          ]"
+          :style="{ transformOrigin: placement === 'top' ? 'bottom' : 'top' }"
         >
           <div 
             v-for="opt in (config.type === 'select' ? config.options : [])" 

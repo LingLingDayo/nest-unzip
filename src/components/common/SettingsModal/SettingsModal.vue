@@ -124,7 +124,7 @@ const isItemVisible = (item: SettingItem): boolean => {
         </div>
 
         <!-- Content Area -->
-        <div ref="contentScrollBox" class="flex-1 overflow-y-auto p-8 custom-scrollbar bg-app-surface/20">
+        <div ref="contentScrollBox" class="flex-1 overflow-y-auto px-8 pt-8 pb-16 custom-scrollbar bg-app-surface/20">
           <div v-if="currentGroup" :key="activeTabId" class="max-w-2xl mx-auto animate-in fade-in slide-in-from-bottom-4 duration-500">
             <div class="mb-8">
               <div class="flex items-center gap-4 mb-2">
