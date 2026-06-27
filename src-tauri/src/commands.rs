@@ -148,7 +148,10 @@ pub fn extract_archive(
                 || err_lower.contains("enter password")
                 || err_lower.contains("data error in encrypted file")
                 || err_lower.contains("can not open encrypted archive")
-                || err_lower.contains("encrypted");
+                || err_lower.contains("encrypted")
+                || err_lower.contains("密码")
+                || err_lower.contains("加密")
+                || err_lower.contains("解密");
 
             ExtractResult {
                 success: false,

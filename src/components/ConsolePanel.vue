@@ -36,7 +36,7 @@ watch(
 <template>
   <!-- Bottom Collapsible Global Console Terminal -->
   <div 
-    class="absolute bottom-0 left-0 right-0 h-[60%] border-t border-app-border bg-app-surface/90 backdrop-blur-md flex flex-col transition-transform duration-300 ease-out will-change-transform z-20"
+    class="absolute bottom-0 left-0 right-0 h-[70%] border-t border-app-border bg-app-surface/90 backdrop-blur-md flex flex-col transition-transform duration-300 ease-out will-change-transform z-20"
     :style="{ transform: isOpen ? 'translateY(0)' : 'translateY(calc(100% - 44px))' }"
   >
     <!-- Console Header Toggle -->

@@ -173,7 +173,9 @@ export function useUnzip(
         .map((s) => s.trim())
         .filter((s) => s.length > 0);
 
-      let mergedPasswords = Array.from(new Set([...taskPwds, ...globalPwds]));
+      let mergedPasswords = taskPwds.length > 0
+        ? Array.from(new Set(taskPwds))
+        : Array.from(new Set(globalPwds));
       let lastInputPwd: string | null = null;
 
       addLog(task.name, "解压缩流程初始化...");
