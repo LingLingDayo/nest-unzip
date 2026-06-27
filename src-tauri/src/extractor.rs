@@ -1,5 +1,7 @@
+use std::io::{BufReader, Read};
 use std::path::Path;
-use std::process::Command;
+use std::process::{Command, Stdio};
+use std::sync::{Arc, Mutex};
 use tauri::Emitter;
 
 use crate::types::LogPayload;
@@ -117,29 +119,117 @@ pub fn resolve_exe_path(dir_or_path: &str, exe_type: &str) -> Option<String> {
     Some(cleaned)
 }
 
+fn parse_7z_percent(s: &str) -> Option<f32> {
+    if let Some(pct_idx) = s.find('%') {
+        let before = &s[..pct_idx];
+        let mut num_str = String::new();
+        for c in before.chars().rev() {
+            if c.is_ascii_digit() {
+                num_str.insert(0, c);
+            } else if c == ' ' {
+                if !num_str.is_empty() {
+                    break;
+                }
+            } else {
+                break;
+            }
+        }
+        if !num_str.is_empty() {
+            return num_str.parse::<f32>().ok();
+        }
+    }
+    None
+}
+
 fn try_extract_7z(
     exe_path: &str,
     archive: &str,
     out_dir: &str,
     password: Option<&str>,
+    progress_callback: Option<&dyn Fn(f32, &str)>,
 ) -> Result<(), String> {
     let mut cmd = Command::new(exe_path);
     cmd.arg("x")
         .arg(archive)
         .arg(format!("-o{}", out_dir))
-        .arg("-y");
+        .arg("-y")
+        .arg("-bsp1"); // 强制 7z 输出进度到 stdout
     if let Some(p) = password {
         cmd.arg(format!("-p{}", p));
     }
     hide_window(&mut cmd);
 
-    let output = cmd.output().map_err(|e| format!("执行 7z 失败: {}", e))?;
-    if output.status.success() {
+    cmd.stdout(Stdio::piped());
+    cmd.stderr(Stdio::piped());
+
+    let mut child = cmd.spawn().map_err(|e| format!("启动 7z 失败: {}", e))?;
+
+    let stdout = child.stdout.take().ok_or("无法获取 stdout 管道")?;
+    let stderr = child.stderr.take().ok_or("无法获取 stderr 管道")?;
+
+    let stderr_output = Arc::new(Mutex::new(String::new()));
+    let stderr_output_clone = stderr_output.clone();
+
+    let stderr_thread = std::thread::spawn(move || {
+        let mut reader = BufReader::new(stderr);
+        let mut buf = String::new();
+        if let Ok(_) = reader.read_to_string(&mut buf) {
+            if let Ok(mut guard) = stderr_output_clone.lock() {
+                *guard = buf;
+            }
+        }
+    });
+
+    let mut stdout_output = String::new();
+    {
+        let mut reader = BufReader::new(stdout);
+        let mut buf = [0u8; 1024];
+        let mut current_line = Vec::new();
+
+        while let Ok(n) = reader.read(&mut buf) {
+            if n == 0 {
+                break;
+            }
+            for &byte in &buf[..n] {
+                if byte == b'\r' || byte == b'\n' {
+                    if !current_line.is_empty() {
+                        let line_str = String::from_utf8_lossy(&current_line);
+                        stdout_output.push_str(&line_str);
+                        stdout_output.push('\n');
+                        if let Some(pct) = parse_7z_percent(&line_str) {
+                            if let Some(cb) = progress_callback {
+                                cb(pct, &line_str);
+                            }
+                        }
+                        current_line.clear();
+                    }
+                } else {
+                    current_line.push(byte);
+                }
+            }
+        }
+        if !current_line.is_empty() {
+            let line_str = String::from_utf8_lossy(&current_line);
+            stdout_output.push_str(&line_str);
+            if let Some(pct) = parse_7z_percent(&line_str) {
+                if let Some(cb) = progress_callback {
+                    cb(pct, &line_str);
+                }
+            }
+        }
+    }
+
+    let _ = stderr_thread.join();
+
+    let status = child
+        .wait()
+        .map_err(|e| format!("等待 7z 结束失败: {}", e))?;
+
+    if status.success() {
         Ok(())
     } else {
-        let err_text = String::from_utf8_lossy(&output.stderr).to_string()
-            + "\n"
-            + &String::from_utf8_lossy(&output.stdout).to_string();
+        let err_guard = stderr_output.lock().unwrap();
+        let err_text = format!("{}\n{}", *err_guard, stdout_output);
         Err(err_text)
     }
 }
@@ -149,6 +239,7 @@ fn try_extract_bc(
     archive: &str,
     out_dir: &str,
     password: Option<&str>,
+    _progress_callback: Option<&dyn Fn(f32, &str)>,
 ) -> Result<(), String> {
     let mut cmd = Command::new(exe_path);
     cmd.arg("x")
@@ -179,12 +270,13 @@ pub fn extract_single_archive(
     archive_path: &str,
     target_dir: &str,
     passwords: &[String],
+    progress_callback: Option<&dyn Fn(f32, &str)>,
 ) -> Result<(), String> {
     // 1. 尝试无密码
     let res = if exe_type == "7z" {
-        try_extract_7z(exe_path, archive_path, target_dir, None)
+        try_extract_7z(exe_path, archive_path, target_dir, None, progress_callback)
     } else {
-        try_extract_bc(exe_path, archive_path, target_dir, None)
+        try_extract_bc(exe_path, archive_path, target_dir, None, progress_callback)
     };
 
     if res.is_ok() {
@@ -199,9 +291,21 @@ pub fn extract_single_archive(
             continue;
         }
         let res = if exe_type == "7z" {
-            try_extract_7z(exe_path, archive_path, target_dir, Some(pwd))
+            try_extract_7z(
+                exe_path,
+                archive_path,
+                target_dir,
+                Some(pwd),
+                progress_callback,
+            )
         } else {
-            try_extract_bc(exe_path, archive_path, target_dir, Some(pwd))
+            try_extract_bc(
+                exe_path,
+                archive_path,
+                target_dir,
+                Some(pwd),
+                progress_callback,
+            )
         };
         if res.is_ok() {
             return Ok(());
@@ -300,12 +404,20 @@ pub fn run_extraction_flow(
         err_msg
     })?;
 
+    let emit_log_ref = &emit_log;
     if let Err(e) = extract_single_archive(
         &resolved_exe_path,
         &exe_type,
         &archive_path,
         &target_dir,
         &passwords,
+        Some(&|pct, _| {
+            emit_log_ref(
+                &format!("开始第一层解压 ({}%)...", pct as i32),
+                "running",
+                10.0 + pct * 0.25, // 10.0 -> 35.0
+            );
+        }),
     ) {
         let err_msg = format!("第一层解压失败: {}", e);
         emit_log(&err_msg, "error", 100.0);
@@ -350,7 +462,8 @@ pub fn run_extraction_flow(
             35.0 + (depth as f32 * 5.0).min(45.0),
         );
 
-        for sub_archive in nested_archives {
+        let nested_count = nested_archives.len();
+        for (i, sub_archive) in nested_archives.into_iter().enumerate() {
             let filename = std::path::Path::new(&sub_archive)
                 .file_name()
                 .and_then(|s| s.to_str())
@@ -363,17 +476,31 @@ pub fn run_extraction_flow(
             };
 
             emit_log(
-                &format!("正在解压嵌套子包: {}", filename),
+                &format!("正在解压嵌套子包: {} (0%)...", filename),
                 "running",
-                35.0 + (depth as f32 * 5.0).min(45.0),
+                35.0 + ((depth - 1) as f32 * 5.0).min(45.0),
             );
 
+            let emit_log_ref = &emit_log;
+            let filename_ref = &filename;
             if let Err(e) = extract_single_archive(
                 &resolved_exe_path,
                 &exe_type,
                 &sub_archive,
                 &parent_dir,
                 &passwords,
+                Some(&|pct, _| {
+                    let current_layer_progress = (i as f32 + pct / 100.0) / nested_count as f32;
+                    let start_progress = 35.0 + ((depth - 1) as f32 * 5.0).min(45.0);
+                    let next_progress = 35.0 + (depth as f32 * 5.0).min(45.0);
+                    let step = next_progress - start_progress;
+                    let progress = start_progress + current_layer_progress * step;
+                    emit_log_ref(
+                        &format!("正在解压嵌套子包: {} ({}%)...", filename_ref, pct as i32),
+                        "running",
+                        progress,
+                    );
+                }),
             ) {
                 let err_msg = format!("解压嵌套子包 {} 失败: {}", filename, e);
                 emit_log(&err_msg, "error", 100.0);
@@ -406,4 +533,23 @@ pub fn run_extraction_flow(
         100.0,
     );
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::parse_7z_percent;
+
+    #[test]
+    fn test_parse_7z_percent() {
+        assert_eq!(parse_7z_percent("  0%"), Some(0.0));
+        assert_eq!(parse_7z_percent("  3%"), Some(3.0));
+        assert_eq!(parse_7z_percent(" 12% 435"), Some(12.0));
+        assert_eq!(parse_7z_percent("100%"), Some(100.0));
+        assert_eq!(
+            parse_7z_percent("Extracting  archive.zip   15%"),
+            Some(15.0)
+        );
+        assert_eq!(parse_7z_percent("Everything is Ok"), None);
+        assert_eq!(parse_7z_percent("  %"), None);
+    }
 }

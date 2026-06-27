@@ -134,6 +134,7 @@ pub async fn extract_archive(
         &archive_path,
         &target_dir,
         &passwords,
+        None,
     ) {
         Ok(_) => ExtractResult {
             success: true,
