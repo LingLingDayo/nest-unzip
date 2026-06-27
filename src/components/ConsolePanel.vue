@@ -35,8 +35,8 @@ watch(
 <template>
   <!-- Bottom Collapsible Global Console Terminal -->
   <div 
-    class="absolute bottom-0 left-0 right-0 border-t border-app-border bg-app-surface/90 backdrop-blur-md flex flex-col transition-all duration-500 z-20"
-    :style="{ height: isOpen ? '60%' : '44px' }"
+    class="absolute bottom-0 left-0 right-0 h-[60%] border-t border-app-border bg-app-surface/90 backdrop-blur-md flex flex-col transition-transform duration-300 ease-out will-change-transform z-20"
+    :style="{ transform: isOpen ? 'translateY(0)' : 'translateY(calc(100% - 44px))' }"
   >
     <!-- Console Header Toggle -->
     <div 
@@ -52,7 +52,6 @@ watch(
       </div>
       
       <div class="flex items-center gap-4">
-        <span class="text-[10px] text-app-text-mute font-medium">点击{{ isOpen ? '折叠' : '展开' }}</span>
         <div class="transition-transform duration-300" :class="{ 'rotate-180': isOpen }">
           <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M5 15l7-7 7 7" />

@@ -163,6 +163,15 @@ onMounted(async () => {
 
     </div>
 
+    <!-- Mask overlay for bottom drawer -->
+    <Transition name="fade">
+      <div 
+        v-if="isConsoleOpen"
+        @click="isConsoleOpen = false"
+        class="absolute inset-0 bg-black/20 backdrop-blur-[0.5px] z-[15] cursor-pointer"
+      ></div>
+    </Transition>
+
     <!-- Bottom Collapsible Global Console Terminal -->
     <ConsolePanel 
       v-model:is-open="isConsoleOpen"
@@ -191,4 +200,13 @@ onMounted(async () => {
     border-radius: 10px;
 }
 .custom-scrollbar::-webkit-scrollbar-thumb:hover { background: var(--color-app-text-mute); }
+
+.fade-enter-active,
+.fade-leave-active {
+  transition: opacity 0.3s ease;
+}
+.fade-enter-from,
+.fade-leave-to {
+  opacity: 0;
+}
 </style>
