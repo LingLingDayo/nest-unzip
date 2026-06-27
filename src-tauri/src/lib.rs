@@ -38,6 +38,122 @@ fn is_command_available(cmd: &str) -> bool {
         .unwrap_or(false)
 }
 
+#[cfg(target_os = "windows")]
+fn query_registry(full_key: &str, value_name: &str) -> Option<String> {
+    let parts: Vec<&str> = full_key.splitn(2, '\\').collect();
+    if parts.len() != 2 {
+        return None;
+    }
+    let hkey_root = parts[0];
+    let sub_key = parts[1];
+
+    use std::os::raw::c_void;
+
+    type HKEY = *mut c_void;
+    type LSTATUS = i32;
+
+    const HKEY_LOCAL_MACHINE: HKEY = 0x80000002 as HKEY;
+    const HKEY_CURRENT_USER: HKEY = 0x80000001 as HKEY;
+    const KEY_READ: u32 = 0x20019;
+    const REG_SZ: u32 = 1;
+    const REG_EXPAND_SZ: u32 = 2;
+
+    #[link(name = "advapi32")]
+    extern "system" {
+        fn RegOpenKeyExW(
+            hKey: HKEY,
+            lpSubKey: *const u16,
+            ulOptions: u32,
+            samDesired: u32,
+            phkResult: *mut HKEY,
+        ) -> LSTATUS;
+
+        fn RegQueryValueExW(
+            hKey: HKEY,
+            lpValueName: *const u16,
+            lpReserved: *mut u32,
+            lpType: *mut u32,
+            lpData: *mut u8,
+            lpcbData: *mut u32,
+        ) -> LSTATUS;
+
+        fn RegCloseKey(hKey: HKEY) -> LSTATUS;
+    }
+
+    let root = match hkey_root {
+        "HKLM" | "HKEY_LOCAL_MACHINE" => HKEY_LOCAL_MACHINE,
+        "HKCU" | "HKEY_CURRENT_USER" => HKEY_CURRENT_USER,
+        _ => return None,
+    };
+
+    let sub_key_w: Vec<u16> = sub_key.encode_utf16().chain(std::iter::once(0)).collect();
+    let value_name_w: Vec<u16> = value_name
+        .encode_utf16()
+        .chain(std::iter::once(0))
+        .collect();
+
+    let mut hkey: HKEY = std::ptr::null_mut();
+    unsafe {
+        if RegOpenKeyExW(root, sub_key_w.as_ptr(), 0, KEY_READ, &mut hkey) != 0 {
+            return None;
+        }
+
+        let mut value_type: u32 = 0;
+        let mut data_len: u32 = 0;
+
+        if RegQueryValueExW(
+            hkey,
+            value_name_w.as_ptr(),
+            std::ptr::null_mut(),
+            &mut value_type,
+            std::ptr::null_mut(),
+            &mut data_len,
+        ) != 0
+        {
+            RegCloseKey(hkey);
+            return None;
+        }
+
+        if value_type != REG_SZ && value_type != REG_EXPAND_SZ {
+            RegCloseKey(hkey);
+            return None;
+        }
+
+        let mut buf = vec![0u8; data_len as usize];
+        if RegQueryValueExW(
+            hkey,
+            value_name_w.as_ptr(),
+            std::ptr::null_mut(),
+            &mut value_type,
+            buf.as_mut_ptr(),
+            &mut data_len,
+        ) != 0
+        {
+            RegCloseKey(hkey);
+            return None;
+        }
+
+        RegCloseKey(hkey);
+
+        let u16_len = (data_len as usize) / 2;
+        if u16_len == 0 {
+            return None;
+        }
+        let u16_buf = std::slice::from_raw_parts(buf.as_ptr() as *const u16, u16_len);
+        let end = u16_buf.iter().position(|&x| x == 0).unwrap_or(u16_len);
+        if let Ok(s) = String::from_utf16(&u16_buf[..end]) {
+            let mut cleaned_val = s;
+            if cleaned_val.starts_with('"') && cleaned_val.ends_with('"') && cleaned_val.len() >= 2
+            {
+                cleaned_val.remove(0);
+                cleaned_val.pop();
+            }
+            return Some(cleaned_val.trim().to_string());
+        }
+    }
+    None
+}
+
 fn clean_path(path: &str) -> String {
     let mut s = path.trim().to_string();
     if s.starts_with('"') && s.ends_with('"') && s.len() >= 2 {
@@ -49,12 +165,29 @@ fn clean_path(path: &str) -> String {
 
 fn resolve_exe_path(dir_or_path: &str, exe_type: &str) -> Option<String> {
     let cleaned = clean_path(dir_or_path);
-    
+
     // 如果为空，执行自动检测
     if cleaned.is_empty() {
         if exe_type == "7z" {
             if is_command_available("7z") {
                 return Some("7z".to_string());
+            }
+            #[cfg(target_os = "windows")]
+            {
+                let reg_keys = [
+                    ("HKLM\\SOFTWARE\\7-Zip", "Path"),
+                    ("HKLM\\SOFTWARE\\WOW6432Node\\7-Zip", "Path"),
+                    ("HKCU\\SOFTWARE\\7-Zip", "Path"),
+                ];
+                for &(key, val_name) in &reg_keys {
+                    if let Some(path_val) = query_registry(key, val_name) {
+                        let base_path = Path::new(&path_val);
+                        let exe_path = base_path.join("7z.exe");
+                        if exe_path.exists() {
+                            return Some(exe_path.to_string_lossy().to_string());
+                        }
+                    }
+                }
             }
             let paths = [
                 "C:\\Program Files\\7-Zip\\7z.exe",
@@ -69,6 +202,27 @@ fn resolve_exe_path(dir_or_path: &str, exe_type: &str) -> Option<String> {
             if is_command_available("bc") {
                 return Some("bc".to_string());
             }
+            #[cfg(target_os = "windows")]
+            {
+                let reg_keys = [
+                    ("HKLM\\SOFTWARE\\Bandizip", "ProgramFolder"),
+                    ("HKLM\\SOFTWARE\\WOW6432Node\\Bandizip", "ProgramFolder"),
+                    ("HKCU\\SOFTWARE\\Bandizip", "ProgramFolder"),
+                ];
+                for &(key, val_name) in &reg_keys {
+                    if let Some(path_val) = query_registry(key, val_name) {
+                        let base_path = Path::new(&path_val);
+                        let bc_path = base_path.join("bc.exe");
+                        if bc_path.exists() {
+                            return Some(bc_path.to_string_lossy().to_string());
+                        }
+                        let bz_path = base_path.join("Bandizip.exe");
+                        if bz_path.exists() {
+                            return Some(bz_path.to_string_lossy().to_string());
+                        }
+                    }
+                }
+            }
             let paths = [
                 "C:\\Program Files\\Bandizip\\bc.exe",
                 "C:\\Program Files\\Bandizip\\Bandizip.exe",
@@ -82,28 +236,28 @@ fn resolve_exe_path(dir_or_path: &str, exe_type: &str) -> Option<String> {
         }
         return None;
     }
-    
+
     let path = Path::new(&cleaned);
-    
+
     // 1. 如果本身是一个存在的文件，直接返回
     if path.is_file() && path.exists() {
         return Some(cleaned);
     }
-    
+
     // 2. 如果是目录，在里面寻找对应的 exe
     let exe_names = if exe_type == "7z" {
         vec!["7z.exe", "7Z.exe"]
     } else {
         vec!["bc.exe", "Bandizip.exe", "BC.exe", "BANDIZIP.exe"]
     };
-    
+
     for name in &exe_names {
         let exe_path = path.join(name);
         if exe_path.exists() {
             return Some(exe_path.to_string_lossy().to_string());
         }
     }
-    
+
     // 3. 兜底：如果不是目录但可能是个去掉 .exe 结尾的路径，尝试拼接寻找
     if !cleaned.to_lowercase().ends_with(".exe") {
         for name in &exe_names {
@@ -113,7 +267,7 @@ fn resolve_exe_path(dir_or_path: &str, exe_type: &str) -> Option<String> {
             }
         }
     }
-    
+
     // 4. 否则直接返回清理后的路径
     Some(cleaned)
 }
@@ -131,7 +285,52 @@ fn detect_tools() -> Result<DetectedTools, String> {
         bandizip = Some("bc".to_string());
     }
 
-    // 2. 检查常见路径
+    // 2. 检查注册表
+    #[cfg(target_os = "windows")]
+    {
+        if seven_zip.is_none() {
+            let reg_keys = [
+                ("HKLM\\SOFTWARE\\7-Zip", "Path"),
+                ("HKLM\\SOFTWARE\\WOW6432Node\\7-Zip", "Path"),
+                ("HKCU\\SOFTWARE\\7-Zip", "Path"),
+            ];
+            for &(key, val_name) in &reg_keys {
+                if let Some(path_val) = query_registry(key, val_name) {
+                    let base_path = Path::new(&path_val);
+                    let exe_path = base_path.join("7z.exe");
+                    if exe_path.exists() {
+                        seven_zip = Some(exe_path.to_string_lossy().to_string());
+                        break;
+                    }
+                }
+            }
+        }
+
+        if bandizip.is_none() {
+            let reg_keys = [
+                ("HKLM\\SOFTWARE\\Bandizip", "ProgramFolder"),
+                ("HKLM\\SOFTWARE\\WOW6432Node\\Bandizip", "ProgramFolder"),
+                ("HKCU\\SOFTWARE\\Bandizip", "ProgramFolder"),
+            ];
+            for &(key, val_name) in &reg_keys {
+                if let Some(path_val) = query_registry(key, val_name) {
+                    let base_path = Path::new(&path_val);
+                    let bc_path = base_path.join("bc.exe");
+                    if bc_path.exists() {
+                        bandizip = Some(bc_path.to_string_lossy().to_string());
+                        break;
+                    }
+                    let bz_path = base_path.join("Bandizip.exe");
+                    if bz_path.exists() {
+                        bandizip = Some(bz_path.to_string_lossy().to_string());
+                        break;
+                    }
+                }
+            }
+        }
+    }
+
+    // 3. 检查常见路径
     if seven_zip.is_none() {
         let paths = [
             "C:\\Program Files\\7-Zip\\7z.exe",
@@ -305,9 +504,8 @@ fn run_extraction_flow(
     exe_path: String,
     exe_type: String,
 ) -> Result<(), String> {
-    let resolved_exe_path = resolve_exe_path(&exe_path, &exe_type).ok_or_else(|| {
-        format!("无法在配置的路径中找到 {} 的可执行文件", exe_type)
-    })?;
+    let resolved_exe_path = resolve_exe_path(&exe_path, &exe_type)
+        .ok_or_else(|| format!("无法在配置的路径中找到 {} 的可执行文件", exe_type))?;
 
     let emit_log = |msg: &str, status: &str, progress: f32| {
         let _ = app_handle.emit(
@@ -349,9 +547,13 @@ fn run_extraction_flow(
         err_msg
     })?;
 
-    if let Err(e) =
-        extract_single_archive(&resolved_exe_path, &exe_type, &archive_path, &target_dir, &passwords)
-    {
+    if let Err(e) = extract_single_archive(
+        &resolved_exe_path,
+        &exe_type,
+        &archive_path,
+        &target_dir,
+        &passwords,
+    ) {
         let err_msg = format!("第一层解压失败: {}", e);
         emit_log(&err_msg, "error", 100.0);
         cleanup_on_error();
@@ -413,9 +615,13 @@ fn run_extraction_flow(
                 35.0 + (depth as f32 * 5.0).min(45.0),
             );
 
-            if let Err(e) =
-                extract_single_archive(&resolved_exe_path, &exe_type, &sub_archive, &parent_dir, &passwords)
-            {
+            if let Err(e) = extract_single_archive(
+                &resolved_exe_path,
+                &exe_type,
+                &sub_archive,
+                &parent_dir,
+                &passwords,
+            ) {
                 let err_msg = format!("解压嵌套子包 {} 失败: {}", filename, e);
                 emit_log(&err_msg, "error", 100.0);
                 cleanup_on_error();
@@ -485,7 +691,13 @@ fn extract_archive(
         }
     };
 
-    match extract_single_archive(&resolved_exe_path, &exe_type, &archive_path, &target_dir, &passwords) {
+    match extract_single_archive(
+        &resolved_exe_path,
+        &exe_type,
+        &archive_path,
+        &target_dir,
+        &passwords,
+    ) {
         Ok(_) => ExtractResult {
             success: true,
             error_type: "None".to_string(),

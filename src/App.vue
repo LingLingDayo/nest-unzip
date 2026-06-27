@@ -40,7 +40,7 @@ interface ConsoleLog {
   type: "info" | "success" | "error";
 }
 const consoleLogs = ref<ConsoleLog[]>([]);
-const isConsoleOpen = ref(true);
+const isConsoleOpen = ref(false);
 
 const addLog = (taskName: string, message: string, type: "info" | "success" | "error" = "info") => {
   const time = new Date().toLocaleTimeString();
