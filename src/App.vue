@@ -326,21 +326,12 @@ const startBulkExtraction = async () => {
         exePath: exePath,
         exeType: exeType,
       });
-
-      // 异步等待当前任务执行结束
-      await new Promise<void>((resolve) => {
-        const checkStatus = setInterval(() => {
-          const updatedTask = tasks.value.find((t) => t.id === task.id);
-          if (updatedTask && (updatedTask.status === "success" || updatedTask.status === "error")) {
-            clearInterval(checkStatus);
-            resolve();
-          }
-        }, 500);
-      });
+      task.status = "success";
+      task.progress = 100;
     } catch (e) {
       task.status = "error";
       task.progress = 100;
-      addLog(task.name, `调用后台任务失败: ${e}`, "error");
+      addLog(task.name, `任务失败: ${e}`, "error");
     }
   }
 
@@ -404,7 +395,7 @@ const activeLogTask = computed(() => {
 </script>
 
 <template>
-  <div class="h-screen w-screen flex flex-col bg-app-bg text-app-text font-sans overflow-hidden select-none select-none">
+  <div class="h-screen w-screen flex flex-col bg-app-bg text-app-text font-sans overflow-hidden select-none">
     
     <!-- Title Header -->
     <header class="h-16 border-b border-app-border bg-app-surface/60 backdrop-blur-md px-8 flex items-center justify-between z-10 shrink-0">

@@ -1,7 +1,61 @@
-# Tauri + Vue + TypeScript
+# NestUnzip (极客深度解压)
 
-This template should help get you started developing with Vue 3 and TypeScript in Vite. The template uses Vue 3 `<script setup>` SFCs, check out the [script setup docs](https://v3.vuejs.org/api/sfc-script-setup.html#sfc-script-setup) to learn more.
+一款专为深度嵌套、批量解包及多密码尝试场景设计的极简、高颜值 Tauri 桌面应用。
 
-## Recommended IDE Setup
+---
 
-- [VS Code](https://code.visualstudio.com/) + [Vue - Official](https://marketplace.visualstudio.com/items?itemName=Vue.volar) + [Tauri](https://marketplace.visualstudio.com/items?itemName=tauri-apps.tauri-vscode) + [rust-analyzer](https://marketplace.visualstudio.com/items?itemName=rust-lang.rust-analyzer)
+## ✨ 核心特性
+
+*   **🔍 自动路径检测**：启动时自动搜寻系统中安装的 `7-Zip` (`7z.exe`) 或 `Bandizip` (`bc.exe`) 并完成配置，支持手动修改首选引擎。
+*   **📂 深度嵌套解压**：一键解包“压缩包套压缩包”的嵌套架构，解压完毕后，**所有中间过渡的子压缩文件都会被移入回收站**，仅保留最终解压的非压缩文件，省时又省力。
+*   **🛡️ 异常回滚机制**：如果解压中途失败（如密码错、损坏等），软件会自动触发回滚，将解压生成的所有临时脏文件、半截文件夹统统**移动到回收站**，避免污染你的工作目录。
+*   **🔑 多密码自动轮询**：支持配置全局密码列表和任务专属密码列表，遇到加密文件时将按顺序依次尝试，直到匹配成功。
+*   **📊 批量自定义操作**：支持批量拖入压缩包，并可为每个压缩包指定不同的解压目标目录与专属密码。
+*   **💻 实时控制台终端**：配备底层事件追踪日志，解包进度、层级及中间过程对你完全透明。
+
+---
+
+## 🚀 简易使用教程
+
+### 1. 配置解压引擎
+首次使用或检测失败时，点击右上角的 **⚙️ 设置** 按钮：
+*   指定 `7z.exe` 或 `bc.exe` 的绝对路径。
+*   配置首选解压引擎（默认使用 7-Zip）。
+*   在“通用解包设置”中填入一些你经常使用的**全局默认密码列表**（每行一个）。
+*   可开启“解压完成后自动打开目标文件夹”的选项。
+
+### 2. 导入压缩包任务
+支持两种方式：
+*   **拖放导入**：直接将压缩包拖入软件的任何区域。
+*   **点击导入**：点击主界面的“添加压缩包”虚线框或上方工具栏的“添加压缩包”按钮。
+
+### 3. 微调任务配置
+每个导入的文件会作为一个卡片显示：
+*   **自定义目标路径**：默认在同级生成同名目录，你可以点击卡片上的 **更改** 按钮，选择任意其他文件夹。
+*   **专属解压密码**：如果该包有专属密码，可在卡片输入框中直接填入（若有多个密码，可用逗号或空格隔开，程序将优先于全局密码依次尝试）。
+
+### 4. 执行解压与查看
+点击工具栏的 **开始批量解压**：
+*   控制台会依次高亮当前任务，并输出实时解压进度条。
+*   点击任务卡片可查看该任务对应的详细提取日志。
+*   底部控制台会输出全局任务报告。
+
+---
+
+## 🛠️ 开发者指南
+
+### 本地依赖安装
+建议使用 `pnpm`：
+```powershell
+pnpm install --ignore-scripts
+```
+
+### 启动本地开发调试
+```powershell
+pnpm tauri dev
+```
+
+### 生产版本打包
+```powershell
+pnpm tauri build
+```
