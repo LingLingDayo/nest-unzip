@@ -35,7 +35,9 @@ pub fn query_registry(full_key: &str, value_name: &str) -> Option<String> {
 
     use std::os::raw::c_void;
 
+    #[allow(clippy::upper_case_acronyms)]
     type HKEY = *mut c_void;
+    #[allow(clippy::upper_case_acronyms)]
     type LSTATUS = i32;
 
     const HKEY_LOCAL_MACHINE: HKEY = 0x80000002 as HKEY;
