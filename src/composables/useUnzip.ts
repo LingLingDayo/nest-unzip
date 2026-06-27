@@ -1,4 +1,4 @@
-import { ref, onMounted, onUnmounted, type Ref } from "vue";
+import { ref, computed, onMounted, onUnmounted, type Ref } from "vue";
 import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import { getCurrentWindow } from "@tauri-apps/api/window";
@@ -13,6 +13,7 @@ export interface ExtractTask {
   progress: number;
   passwords: string; // 专属密码，逗号隔开
   targetDir: string; // 自定义解压输出目录
+  selected?: boolean; // 是否选中
 }
 
 export interface PasswordModalInstance {
@@ -79,6 +80,7 @@ export function useUnzip(
           progress: 0,
           passwords: "",
           targetDir: finalTargetDir,
+          selected: false,
         });
         addedCount++;
       }
@@ -143,6 +145,15 @@ export function useUnzip(
   const startBulkExtraction = async () => {
     if (isProcessing.value || tasks.value.length === 0) return;
 
+    const selectedTasks = tasks.value.filter((t) => t.selected);
+    const tasksToProcess = selectedTasks.length > 0 ? selectedTasks : tasks.value;
+
+    const pendingTasks = tasksToProcess.filter((t) => t.status !== "success");
+    if (pendingTasks.length === 0) {
+      addLog("系统", "所选任务已全部解压成功，无需重复执行");
+      return;
+    }
+
     const exeType = appSettings.preferredTool;
     const exePath = exeType === "7z" ? appSettings.sevenZipDir : appSettings.bandizipDir;
 
@@ -156,8 +167,8 @@ export function useUnzip(
     isProcessing.value = true;
     addLog("系统", `批量深度解压启动，引擎: ${exeType === "7z" ? "7-Zip" : "Bandizip"}...`);
 
-    for (let i = 0; i < tasks.value.length; i++) {
-      const task = tasks.value[i];
+    for (let i = 0; i < tasksToProcess.length; i++) {
+      const task = tasksToProcess[i];
       if (task.status === "success") continue;
 
       task.status = "running";
@@ -397,6 +408,25 @@ export function useUnzip(
     if (unlistenDragDrop) unlistenDragDrop();
   });
 
+  const toggleSelect = (index: number) => {
+    if (isProcessing.value) return;
+    const task = tasks.value[index];
+    if (task) {
+      task.selected = !task.selected;
+    }
+  };
+
+  const selectedCount = computed(() => tasks.value.filter((t) => t.selected).length);
+  const isAllSelected = computed(() => tasks.value.length > 0 && tasks.value.every((t) => t.selected));
+
+  const toggleSelectAll = () => {
+    if (isProcessing.value) return;
+    const allSelected = isAllSelected.value;
+    tasks.value.forEach((t) => {
+      t.selected = !allSelected;
+    });
+  };
+
   return {
     tasks,
     isProcessing,
@@ -406,5 +436,9 @@ export function useUnzip(
     removeTask,
     clearTasks,
     startBulkExtraction,
+    toggleSelect,
+    toggleSelectAll,
+    selectedCount,
+    isAllSelected,
   };
 }

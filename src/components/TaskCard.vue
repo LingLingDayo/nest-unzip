@@ -9,12 +9,17 @@ defineProps<{
 const emit = defineEmits<{
   (e: "remove"): void;
   (e: "change-dir"): void;
+  (e: "toggle-select"): void;
 }>();
 </script>
 
 <template>
   <div 
-    class="p-5 rounded-2xl border bg-app-surface shadow-app-sm flex flex-col gap-4 transition-all duration-300 hover:shadow-app-md border-app-border hover:border-app-border-focus relative"
+    @click="isProcessing ? null : emit('toggle-select')"
+    class="p-5 rounded-2xl border bg-app-surface shadow-app-sm flex flex-col gap-4 transition-all duration-300 hover:shadow-app-md relative cursor-pointer group"
+    :class="task.selected 
+      ? 'border-app-primary bg-app-primary-light/5 shadow-md shadow-app-primary/5' 
+      : 'border-app-border hover:border-app-border-focus'"
   >
     <!-- Task Info Header -->
     <div class="flex items-start justify-between">

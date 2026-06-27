@@ -34,6 +34,8 @@ const {
   removeTask,
   clearTasks,
   startBulkExtraction,
+  toggleSelect,
+  selectedCount,
 } = useUnzip(appSettings, detectedToolsState, passwordModalRef, addLog);
 
 onMounted(async () => {
@@ -98,9 +100,10 @@ onMounted(async () => {
         
         <!-- Action Toolbar -->
         <div class="px-6 py-4 border-b border-app-border flex justify-between items-center bg-app-surface shrink-0 z-10">
-          <div class="flex items-center gap-2">
+          <div class="flex items-center gap-3">
             <span class="text-sm font-black text-app-text">任务列表</span>
             <span class="text-[11px] font-bold text-app-primary bg-app-primary-light px-2.5 py-0.5 rounded-full">{{ tasks.length }} 个任务</span>
+            <span v-if="selectedCount > 0" class="text-[11px] font-bold text-app-emerald bg-app-emerald/10 px-2.5 py-0.5 rounded-full">已选择 {{ selectedCount }} 个</span>
           </div>
           
           <div class="flex items-center gap-3">
@@ -127,7 +130,7 @@ onMounted(async () => {
                 <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
                 <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
               </svg>
-              <span>{{ isProcessing ? '深度解压中...' : '开始批量解压' }}</span>
+              <span>{{ isProcessing ? '深度解压中...' : selectedCount > 0 ? '解压已选压缩包' : '开始批量解压' }}</span>
             </button>
           </div>
         </div>
@@ -156,6 +159,7 @@ onMounted(async () => {
             :is-processing="isProcessing"
             @remove="removeTask(index)"
             @change-dir="handleSelectTargetDir(task)"
+            @toggle-select="toggleSelect(index)"
           />
         </div>
 
