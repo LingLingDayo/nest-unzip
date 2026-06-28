@@ -1,0 +1,66 @@
+name: Publish GitHub Release
+
+on:
+  push:
+    tags:
+      - '*'
+
+permissions:
+  contents: write
+
+env:
+  ZIP_NAME: ""
+
+jobs:
+  release:
+    runs-on: windows-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 9
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'pnpm'
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: x86_64-pc-windows-msvc
+
+      - name: Install frontend dependencies
+        run: pnpm install
+
+      - name: Build Tauri App
+        run: pnpm tauri build
+
+      - name: Extract Release Notes from CHANGELOG
+        run: node scripts/extract-changelog.js
+
+      - name: Create Source Code Archive
+        shell: bash
+        run: |
+          # 清理 tag 中的斜杠，防止因目录不存在导致打包失败（例如 release/v0.2.0）
+          CLEANED_TAG=$(echo "${{ github.ref_name }}" | sed 's/\//-/g')
+          ZIP_NAME="nest-unzip-${CLEANED_TAG}.zip"
+          git archive --format=zip --output="$ZIP_NAME" HEAD
+          echo "ZIP_NAME=$ZIP_NAME" >> $GITHUB_ENV
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          body_path: release_notes.md
+          files: |
+            ${{ env.ZIP_NAME }}
+            src-tauri/target/release/bundle/nsis/*.exe
+            src-tauri/target/release/bundle/msi/*.msi
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
