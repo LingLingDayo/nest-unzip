@@ -25,3 +25,11 @@ pub struct ProgressPayload {
     pub task_id: String,
     pub progress: f32,
 }
+
+#[derive(Clone, serde::Serialize)]
+pub struct EstimatedTimePayload {
+    #[serde(rename = "taskId")]
+    pub task_id: String,
+    #[serde(rename = "estimatedMs")]
+    pub estimated_ms: u64,
+}

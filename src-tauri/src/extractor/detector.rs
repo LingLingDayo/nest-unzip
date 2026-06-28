@@ -89,8 +89,23 @@ pub fn resolve_exe_path(dir_or_path: &str, exe_type: &str) -> Option<String> {
 
     let path = Path::new(&cleaned);
 
-    // 1. 如果本身是一个存在的文件，直接返回
+    // 1. 如果本身是一个存在的文件，且不是 Bandizip.exe GUI 则直接返回
     if path.is_file() && path.exists() {
+        if let Some(file_name) = path.file_name().and_then(|s| s.to_str()) {
+            let lower = file_name.to_lowercase();
+            if lower == "bandizip.exe" {
+                if let Some(parent) = path.parent() {
+                    let bz_path = parent.join("bz.exe");
+                    if bz_path.exists() {
+                        return Some(bz_path.to_string_lossy().to_string());
+                    }
+                    let bc_path = parent.join("bc.exe");
+                    if bc_path.exists() {
+                        return Some(bc_path.to_string_lossy().to_string());
+                    }
+                }
+            }
+        }
         return Some(cleaned);
     }
 
@@ -127,4 +142,19 @@ pub fn resolve_exe_path(dir_or_path: &str, exe_type: &str) -> Option<String> {
 
     // 4. 否则直接返回清理后的路径
     Some(cleaned)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_resolve_exe_path_bandizip_redirect() {
+        let gui_path = "H:\\APP\\Bandizip\\Bandizip.exe";
+        if std::path::Path::new(gui_path).exists() {
+            let resolved = resolve_exe_path(gui_path, "bandizip").unwrap();
+            assert!(resolved.to_lowercase().ends_with("bz.exe") || resolved.to_lowercase().ends_with("bc.exe"));
+            println!("成功重定向 Bandizip.exe 到: {}", resolved);
+        }
+    }
 }

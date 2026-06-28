@@ -1,7 +1,7 @@
 use crate::extractor::{
     extract_single_archive, find_archives_in_dir, resolve_exe_path, run_extraction_flow,
 };
-use crate::types::{DetectedTools, ExtractResult};
+use crate::types::{DetectedTools, ExtractResult, LogPayload, EstimatedTimePayload};
 use crate::utils::is_command_available;
 use std::path::Path;
 
@@ -51,14 +51,19 @@ pub async fn detect_tools() -> Result<DetectedTools, String> {
             for &(key, val_name) in &reg_keys {
                 if let Some(path_val) = query_registry(key, val_name) {
                     let base_path = Path::new(&path_val);
+                    let bz_path = base_path.join("bz.exe");
+                    if bz_path.exists() {
+                        bandizip = Some(bz_path.to_string_lossy().to_string());
+                        break;
+                    }
                     let bc_path = base_path.join("bc.exe");
                     if bc_path.exists() {
                         bandizip = Some(bc_path.to_string_lossy().to_string());
                         break;
                     }
-                    let bz_path = base_path.join("Bandizip.exe");
-                    if bz_path.exists() {
-                        bandizip = Some(bz_path.to_string_lossy().to_string());
+                    let gui_path = base_path.join("Bandizip.exe");
+                    if gui_path.exists() {
+                        bandizip = Some(gui_path.to_string_lossy().to_string());
                         break;
                     }
                 }
@@ -82,8 +87,10 @@ pub async fn detect_tools() -> Result<DetectedTools, String> {
 
     if bandizip.is_none() {
         let paths = [
+            "C:\\Program Files\\Bandizip\\bz.exe",
             "C:\\Program Files\\Bandizip\\bc.exe",
             "C:\\Program Files\\Bandizip\\Bandizip.exe",
+            "C:\\Program Files (x86)\\Bandizip\\bz.exe",
             "C:\\Program Files (x86)\\Bandizip\\bc.exe",
         ];
         for p in &paths {
@@ -136,13 +143,46 @@ pub async fn extract_archive(
     let app_handle_clone = app_handle.clone();
     let task_id_clone = task_id.clone();
 
+    let file_size = std::fs::metadata(&archive_path)
+        .map(|m| m.len())
+        .unwrap_or(0);
+    let estimated_ms = 300 + (file_size * 1000 / 70_000_000) as u64;
+
+    let _ = app_handle.emit(
+        "extract-estimated-time",
+        EstimatedTimePayload {
+            task_id: task_id.clone(),
+            estimated_ms,
+        },
+    );
+
+    let log_msg = if exe_type == "7z" {
+        format!("启动 {} 引擎，路径: {}", exe_type, resolved_exe_path)
+    } else {
+        format!("启动 {} 引擎，路径: {}。提示：Bandizip 命令行引擎不支持大文件解压时的实时百分比，系统将配合模拟进度进行平滑展示，建议首选 7-Zip 以获得最精准的实时进度。", exe_type, resolved_exe_path)
+    };
+
+    let _ = app_handle.emit(
+        "extract-log",
+        LogPayload {
+            task_id: task_id.clone(),
+            message: log_msg,
+            status: "running".to_string(),
+            progress: 0.0,
+        },
+    );
+
+    use std::sync::{Arc, Mutex};
+    let last_logged_pct = Arc::new(Mutex::new(-20.0f32));
+    let last_logged_pct_clone = last_logged_pct.clone();
+
     match extract_single_archive(
         &resolved_exe_path,
         &exe_type,
         &archive_path,
         &target_dir,
         &passwords,
-        Some(&move |pct, _| {
+        Some(&move |pct, file| {
             let _ = app_handle_clone.emit(
                 "single-extract-progress",
                 ProgressPayload {
@@ -150,6 +190,20 @@ pub async fn extract_archive(
                     progress: pct,
                 },
             );
+            
+            let mut log_guard = last_logged_pct_clone.lock().unwrap();
+            if pct - *log_guard >= 20.0 || pct >= 100.0 {
+                *log_guard = pct;
+                let _ = app_handle_clone.emit(
+                    "extract-log",
+                    LogPayload {
+                        task_id: task_id_clone.clone(),
+                        message: format!("解压: {} ({:.1}%)", file, pct),
+                        status: "running".to_string(),
+                        progress: pct,
+                    },
+                );
+            }
         }),
     ) {
         Ok(_) => ExtractResult {

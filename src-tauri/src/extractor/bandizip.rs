@@ -18,13 +18,15 @@ pub fn get_bandizip_total_files(
     hide_window(&mut cmd);
 
     let output = cmd.output().ok()?;
-    if !output.status.success() {
-        return None;
-    }
-
     let stdout_str = String::from_utf8_lossy(&output.stdout);
+    
     for line in stdout_str.lines().rev() {
-        if let Some(idx) = line.find(" files,") {
+        let found_idx = line.find(" files,")
+            .or_else(|| line.find(" files"))
+            .or_else(|| line.find(" file(s)"))
+            .or_else(|| line.find(" 个文件"));
+
+        if let Some(idx) = found_idx {
             let part = &line[..idx];
             let mut num_str = String::new();
             for c in part.chars().rev() {
@@ -43,6 +45,7 @@ pub fn get_bandizip_total_files(
             }
         }
     }
+
     None
 }
 
@@ -112,7 +115,14 @@ pub fn try_extract_bc(
                             // 判断这一行是否代表解压出的文件名
                             let is_info_line = trimmed.starts_with("bz ")
                                 || trimmed.starts_with("Extracting archive:")
-                                || trimmed.starts_with("bc ");
+                                || trimmed.starts_with("bc ")
+                                || trimmed.starts_with("ERROR")
+                                || trimmed.starts_with("Error")
+                                || trimmed.contains("Password required")
+                                || trimmed.starts_with("----")
+                                || trimmed.starts_with("Date  Time")
+                                || trimmed.starts_with("Listing archive:")
+                                || trimmed.starts_with("Archive format:");
                             if !is_info_line {
                                 processed_files += 1;
                                 if let Some(total) = total_files {
@@ -142,7 +152,14 @@ pub fn try_extract_bc(
                 stdout_output.push_str(&line_str);
                 let is_info_line = trimmed.starts_with("bz ")
                     || trimmed.starts_with("Extracting archive:")
-                    || trimmed.starts_with("bc ");
+                    || trimmed.starts_with("bc ")
+                    || trimmed.starts_with("ERROR")
+                    || trimmed.starts_with("Error")
+                    || trimmed.contains("Password required")
+                    || trimmed.starts_with("----")
+                    || trimmed.starts_with("Date  Time")
+                    || trimmed.starts_with("Listing archive:")
+                    || trimmed.starts_with("Archive format:");
                 if !is_info_line {
                     processed_files += 1;
                     if let Some(total) = total_files {
@@ -173,5 +190,33 @@ pub fn try_extract_bc(
         let err_guard = stderr_output.lock().unwrap();
         let err_text = format!("{}\n{}", *err_guard, stdout_output);
         Err(err_text)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::path::Path;
+
+    #[test]
+    fn test_bandizip_extraction() {
+        let exe_path = "H:\\APP\\Bandizip\\bz.exe";
+        if !Path::new(exe_path).exists() {
+            println!("bz.exe 不存在，跳过测试");
+            return;
+        }
+
+        let archive = "H:\\Projects\\aibuild\\nest-unzip\\.temp\\nopwd.zip";
+        let out_dir = "H:\\Projects\\aibuild\\nest-unzip\\.temp\\out_test_extract";
+
+        let total = get_bandizip_total_files(exe_path, archive, None);
+        println!("总文件数: {:?}", total);
+
+        let res = try_extract_bc(exe_path, archive, out_dir, None, Some(&|pct, file| {
+            println!("进度: {:.1}%, 发生于文件: {}", pct, file);
+        }));
+
+        println!("结果: {:?}", res);
+        assert!(res.is_ok());
     }
 }

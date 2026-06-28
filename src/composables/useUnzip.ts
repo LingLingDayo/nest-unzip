@@ -17,6 +17,8 @@ export interface ExtractTask {
   currentDepth?: number; // 当前解压层级
   currentIndex?: number; // 当前层级内的索引
   totalInLevel?: number; // 当前层级的总文件数
+  estimatedMs?: number; // 预计的总毫秒数
+  elapsedMs?: number; // 已消耗的毫秒数
 }
 
 export interface PasswordModalInstance {
@@ -31,6 +33,55 @@ export function useUnzip(
 ) {
   const tasks = ref<ExtractTask[]>([]);
   const isProcessing = ref(false);
+
+  // 模拟平滑进度增加的定时器
+  let progressTimer: any = null;
+  const startProgressTimer = () => {
+    if (progressTimer) return;
+    progressTimer = setInterval(() => {
+      let hasRunning = false;
+      tasks.value.forEach((task) => {
+        if (task.status === "running") {
+          hasRunning = true;
+          if (appSettings.preferredTool === "7z") {
+            return;
+          }
+          const i = task.currentIndex || 0;
+          const nestedCount = task.totalInLevel || 1;
+          const currentLayerStart = (i / nestedCount) * 100.0;
+          const nextLayerStart = ((i + 1) / nestedCount) * 100.0;
+          const step = nextLayerStart - currentLayerStart;
+
+          // 每个子包估算时间
+          const fileEstimatedMs = (task.estimatedMs || 2500) / nestedCount;
+          if (!task.elapsedMs) {
+            task.elapsedMs = 0;
+          }
+          task.elapsedMs += 100;
+
+          // 估算进度的比例
+          const timeProgress = (task.elapsedMs / fileEstimatedMs) * 100.0;
+          const pctOffset = Math.min(98.0, timeProgress);
+
+          const simulatedProgress = currentLayerStart + (pctOffset / 100.0) * step;
+
+          if (simulatedProgress > task.progress && task.progress < 98) {
+            task.progress = simulatedProgress;
+          }
+        }
+      });
+      if (!hasRunning) {
+        stopProgressTimer();
+      }
+    }, 100);
+  };
+
+  const stopProgressTimer = () => {
+    if (progressTimer) {
+      clearInterval(progressTimer);
+      progressTimer = null;
+    }
+  };
 
   const finalizeExtraction = async (task: ExtractTask, logSuccessDetail: string) => {
     if (appSettings.flattenSingleSubdir) {
@@ -198,6 +249,9 @@ export function useUnzip(
 
       task.status = "running";
       task.progress = 0;
+      task.currentIndex = 0;
+      task.totalInLevel = 1;
+      startProgressTimer();
 
       const globalPwds = ((appSettings.globalPasswords || "") as string)
         .split("\n")
@@ -285,6 +339,8 @@ export function useUnzip(
             task.currentDepth = depth;
             task.currentIndex = index;
             task.totalInLevel = nestedCount;
+            task.elapsedMs = 0;
+            task.progress = (index / nestedCount) * 100.0;
 
             let currentTargetDir = task.targetDir;
             if (subArchive !== task.path) {
@@ -402,6 +458,7 @@ export function useUnzip(
 
   let unlistenLog: UnlistenFn | null = null;
   let unlistenSingleProgress: UnlistenFn | null = null;
+  let unlistenEstimatedTime: UnlistenFn | null = null;
   let unlistenDragDrop: UnlistenFn | null = null;
   let isMounted = true;
 
@@ -416,7 +473,9 @@ export function useUnzip(
           if (status === "success") {
             finalizeExtraction(task, `[成功] ${message}`);
           } else {
-            task.progress = progress;
+            if (progress > task.progress) {
+              task.progress = progress;
+            }
             task.status = status;
 
             let logType: "info" | "success" | "error" = "info";
@@ -449,7 +508,9 @@ export function useUnzip(
 
           // 计算并显示当前解压层级的整体进度 (0% ~ 100%)
           const currentLayerProgress = ((i + progress / 100.0) / nestedCount) * 100.0;
-          task.progress = Math.round(currentLayerProgress);
+          if (currentLayerProgress > task.progress) {
+            task.progress = currentLayerProgress;
+          }
         }
       });
       if (!isMounted) {
@@ -459,6 +520,24 @@ export function useUnzip(
       }
     } catch (e) {
       console.error("注册 single-extract-progress 监听失败:", e);
+    }
+
+    try {
+      const uEstimated = await listen("extract-estimated-time", (event: any) => {
+        const { taskId, estimatedMs } = event.payload;
+        const task = tasks.value.find((t) => t.id === taskId);
+        if (task) {
+          task.estimatedMs = estimatedMs;
+          task.elapsedMs = 0;
+        }
+      });
+      if (!isMounted) {
+        uEstimated();
+      } else {
+        unlistenEstimatedTime = uEstimated;
+      }
+    } catch (e) {
+      console.error("注册 extract-estimated-time 监听失败:", e);
     }
 
     try {
@@ -480,8 +559,10 @@ export function useUnzip(
 
   onUnmounted(() => {
     isMounted = false;
+    stopProgressTimer();
     if (unlistenLog) unlistenLog();
     if (unlistenSingleProgress) unlistenSingleProgress();
+    if (unlistenEstimatedTime) unlistenEstimatedTime();
     if (unlistenDragDrop) unlistenDragDrop();
   });
 

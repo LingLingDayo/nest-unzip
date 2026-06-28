@@ -1,6 +1,6 @@
 use super::archive::{extract_single_archive, find_archives_in_dir};
 use super::detector::resolve_exe_path;
-use crate::types::LogPayload;
+use crate::types::{LogPayload, EstimatedTimePayload};
 use tauri::Emitter;
 
 pub fn run_extraction_flow(
@@ -44,7 +44,24 @@ pub fn run_extraction_flow(
         }
     };
 
-    emit_log("开始第一层解压...", "running", 10.0);
+    let file_size = std::fs::metadata(&archive_path)
+        .map(|m| m.len())
+        .unwrap_or(0);
+    let estimated_ms = 300 + (file_size * 1000 / 70_000_000) as u64;
+    let _ = app_handle.emit(
+        "extract-estimated-time",
+        EstimatedTimePayload {
+            task_id: task_id.clone(),
+            estimated_ms,
+        },
+    );
+
+    let start_msg = if exe_type == "7z" {
+        "开始第一层解压...".to_string()
+    } else {
+        "开始第一层解压... 提示：Bandizip 命令行引擎不支持大文件解压时的实时百分比，系统将配合模拟进度进行平滑展示，建议首选 7-Zip 以获得最精准的实时进度。".to_string()
+    };
+    emit_log(&start_msg, "running", 10.0);
 
     // 1. 第一层解压
     std::fs::create_dir_all(&target_dir).map_err(|e| {
@@ -54,6 +71,9 @@ pub fn run_extraction_flow(
     })?;
 
     let emit_log_ref = &emit_log;
+    let last_logged_pct = std::sync::Mutex::new(-20.0f32);
+    let last_logged_pct_ref = &last_logged_pct;
+
     if let Err(e) = extract_single_archive(
         &resolved_exe_path,
         &exe_type,
@@ -61,11 +81,15 @@ pub fn run_extraction_flow(
         &target_dir,
         &passwords,
         Some(&|pct, _| {
-            emit_log_ref(
-                &format!("开始第一层解压 ({}%)...", pct as i32),
-                "running",
-                10.0 + pct * 0.25, // 10.0 -> 35.0
-            );
+            let mut log_guard = last_logged_pct_ref.lock().unwrap();
+            if pct - *log_guard >= 20.0 || pct >= 100.0 {
+                *log_guard = pct;
+                emit_log_ref(
+                    &format!("开始第一层解压 ({}%)...", pct as i32),
+                    "running",
+                    10.0 + pct * 0.25, // 10.0 -> 35.0
+                );
+            }
         }),
     ) {
         let err_msg = format!("第一层解压失败: {}", e);
@@ -154,8 +178,23 @@ pub fn run_extraction_flow(
                 35.0 + ((depth - 1) as f32 * 5.0).min(45.0),
             );
 
+            let sub_file_size = std::fs::metadata(&sub_archive)
+                .map(|m| m.len())
+                .unwrap_or(0);
+            let sub_estimated_ms = 300 + (sub_file_size * 1000 / 70_000_000) as u64;
+            let _ = app_handle.emit(
+                "extract-estimated-time",
+                EstimatedTimePayload {
+                    task_id: task_id.clone(),
+                    estimated_ms: sub_estimated_ms,
+                },
+            );
+
             let emit_log_ref = &emit_log;
             let filename_ref = &filename;
+            let last_logged_sub_pct = std::sync::Mutex::new(-20.0f32);
+            let last_logged_sub_pct_ref = &last_logged_sub_pct;
+
             if let Err(e) = extract_single_archive(
                 &resolved_exe_path,
                 &exe_type,
@@ -163,16 +202,20 @@ pub fn run_extraction_flow(
                 &parent_dir,
                 &passwords,
                 Some(&|pct, _| {
-                    let current_layer_progress = (i as f32 + pct / 100.0) / nested_count as f32;
-                    let start_progress = 35.0 + ((depth - 1) as f32 * 5.0).min(45.0);
-                    let next_progress = 35.0 + (depth as f32 * 5.0).min(45.0);
-                    let step = next_progress - start_progress;
-                    let progress = start_progress + current_layer_progress * step;
-                    emit_log_ref(
-                        &format!("正在解压嵌套子包: {} ({}%)...", filename_ref, pct as i32),
-                        "running",
-                        progress,
-                    );
+                    let mut log_guard = last_logged_sub_pct_ref.lock().unwrap();
+                    if pct - *log_guard >= 20.0 || pct >= 100.0 {
+                        *log_guard = pct;
+                        let current_layer_progress = (i as f32 + pct / 100.0) / nested_count as f32;
+                        let start_progress = 35.0 + ((depth - 1) as f32 * 5.0).min(45.0);
+                        let next_progress = 35.0 + (depth as f32 * 5.0).min(45.0);
+                        let step = next_progress - start_progress;
+                        let progress = start_progress + current_layer_progress * step;
+                        emit_log_ref(
+                            &format!("正在解压嵌套子包: {} ({}%)...", filename_ref, pct as i32),
+                            "running",
+                            progress,
+                        );
+                    }
                 }),
             ) {
                 let err_msg = format!("解压嵌套子包 {} 失败: {}", filename, e);
