@@ -37,10 +37,13 @@ pub fn try_extract_7z(
         .arg(archive)
         .arg(format!("-o{}", out_dir))
         .arg("-y")
-        .arg("-bsp1"); // 强制 7z 输出进度到 stdout
+        .arg("-bso1")
+        .arg("-bse1")
+        .arg("-bsp2"); // 强制进度到 stderr (无缓冲)，错误和输出到 stdout
     if let Some(p) = password {
         cmd.arg(format!("-p{}", p));
     }
+    cmd.stdin(Stdio::null());
     hide_window(&mut cmd);
 
     cmd.stdout(Stdio::piped());
@@ -48,8 +51,9 @@ pub fn try_extract_7z(
 
     let mut child = cmd.spawn().map_err(|e| format!("启动 7z 失败: {}", e))?;
 
-    let stdout = child.stdout.take().ok_or("无法获取 stdout 管道")?;
-    let stderr = child.stderr.take().ok_or("无法获取 stderr 管道")?;
+    // 交换：读取实际的 stderr 作为进度流 (主线程)，读取实际的 stdout 作为日志流 (后台线程)
+    let stdout = child.stderr.take().ok_or("无法获取 stderr 管道")?;
+    let stderr = child.stdout.take().ok_or("无法获取 stdout 管道")?;
 
     let stderr_output = Arc::new(Mutex::new(String::new()));
     let stderr_output_clone = stderr_output.clone();
@@ -75,11 +79,15 @@ pub fn try_extract_7z(
                 break;
             }
             for &byte in &buf[..n] {
-                if byte == b'\r' || byte == b'\n' {
+                if byte == b'\r' || byte == b'\n' || byte == b'\x08' {
                     if !current_line.is_empty() {
                         let line_str = String::from_utf8_lossy(&current_line);
-                        stdout_output.push_str(&line_str);
-                        stdout_output.push('\n');
+
+                        if byte != b'\x08' {
+                            stdout_output.push_str(&line_str);
+                            stdout_output.push('\n');
+                        }
+
                         if let Some(pct) = parse_7z_percent(&line_str) {
                             if let Some(cb) = progress_callback {
                                 cb(pct, &line_str);

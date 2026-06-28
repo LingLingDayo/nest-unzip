@@ -102,6 +102,8 @@ pub async fn detect_tools() -> Result<DetectedTools, String> {
 
 #[tauri::command]
 pub async fn extract_archive(
+    app_handle: tauri::AppHandle,
+    task_id: String,
     exe_path: String,
     exe_type: String,
     archive_path: String,
@@ -128,13 +130,27 @@ pub async fn extract_archive(
         }
     };
 
+    use crate::types::ProgressPayload;
+    use tauri::Emitter;
+
+    let app_handle_clone = app_handle.clone();
+    let task_id_clone = task_id.clone();
+
     match extract_single_archive(
         &resolved_exe_path,
         &exe_type,
         &archive_path,
         &target_dir,
         &passwords,
-        None,
+        Some(&move |pct, _| {
+            let _ = app_handle_clone.emit(
+                "single-extract-progress",
+                ProgressPayload {
+                    task_id: task_id_clone.clone(),
+                    progress: pct,
+                },
+            );
+        }),
     ) {
         Ok(_) => ExtractResult {
             success: true,

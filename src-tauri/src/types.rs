@@ -19,3 +19,9 @@ pub struct ExtractResult {
     pub error_type: String, // "None" | "PasswordRequired" | "Other"
     pub message: String,
 }
+
+#[derive(Clone, serde::Serialize)]
+pub struct ProgressPayload {
+    pub task_id: String,
+    pub progress: f32,
+}

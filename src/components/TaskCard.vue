@@ -104,7 +104,12 @@ const emit = defineEmits<{
     <!-- Progress Bar -->
     <div v-if="task.status === 'running' || task.status === 'success' || task.status === 'error'" class="w-full space-y-1.5">
       <div class="flex justify-between items-center text-[10px] font-black">
-        <span class="text-app-text-dim">解压进度</span>
+        <span class="text-app-text-dim">
+          解压进度
+          <span v-if="task.status === 'running' && task.currentDepth" class="text-app-text-mute font-medium text-[9px] ml-1">
+            (第 {{ task.currentDepth }} 层)
+          </span>
+        </span>
         <span :class="task.status === 'error' ? 'text-app-rose' : 'text-app-primary'">{{ Math.round(task.progress) }}%</span>
       </div>
       <div class="w-full h-1.5 bg-app-bg rounded-full overflow-hidden">

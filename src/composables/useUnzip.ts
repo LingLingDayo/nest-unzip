@@ -14,6 +14,9 @@ export interface ExtractTask {
   passwords: string; // 专属密码，逗号隔开
   targetDir: string; // 自定义解压输出目录
   selected?: boolean; // 是否选中
+  currentDepth?: number; // 当前解压层级
+  currentIndex?: number; // 当前层级内的索引
+  totalInLevel?: number; // 当前层级的总文件数
 }
 
 export interface PasswordModalInstance {
@@ -194,7 +197,7 @@ export function useUnzip(
       if (task.status === "success") continue;
 
       task.status = "running";
-      task.progress = 5;
+      task.progress = 0;
 
       const globalPwds = ((appSettings.globalPasswords || "") as string)
         .split("\n")
@@ -273,9 +276,16 @@ export function useUnzip(
             addLog(task.name, ` -> 待解压队列成员: ${item.split(/[\\/]/).pop() || item}`, "info");
           }
 
-          for (const subArchive of currentLevelArchives) {
+          const nestedCount = currentLevelArchives.length;
+          for (let index = 0; index < nestedCount; index++) {
+            const subArchive = currentLevelArchives[index];
             const filename = subArchive.split(/[\\/]/).pop() || "未知压缩包";
             
+            // 保存当前层级元数据，供进度计算监听器使用
+            task.currentDepth = depth;
+            task.currentIndex = index;
+            task.totalInLevel = nestedCount;
+
             let currentTargetDir = task.targetDir;
             if (subArchive !== task.path) {
               const lastSlash = Math.max(subArchive.lastIndexOf("/"), subArchive.lastIndexOf("\\"));
@@ -286,6 +296,7 @@ export function useUnzip(
             while (!isExtracted) {
               addLog(task.name, `尝试解压: ${filename} -> ${currentTargetDir} (已配置密码池包含 ${mergedPasswords.length} 个密码)`, "info");
               const result = await invoke<{ success: boolean; errorType: string; message: string }>("extract_archive", {
+                taskId: task.id,
                 exePath: exePath,
                 exeType: exeType,
                 archivePath: subArchive,
@@ -365,9 +376,6 @@ export function useUnzip(
             addLog(task.name, `在当前层未发现新的嵌套压缩包`, "info");
           }
 
-          const currentProgress = 35 + (depth * 5);
-          task.progress = Math.min(currentProgress, 95);
-
           if (queue.length > 0) {
             depth++;
           }
@@ -393,6 +401,7 @@ export function useUnzip(
   };
 
   let unlistenLog: UnlistenFn | null = null;
+  let unlistenSingleProgress: UnlistenFn | null = null;
   let unlistenDragDrop: UnlistenFn | null = null;
   let isMounted = true;
 
@@ -431,6 +440,28 @@ export function useUnzip(
     }
 
     try {
+      const uSingleProgress = await listen("single-extract-progress", (event: any) => {
+        const { task_id, progress } = event.payload;
+        const task = tasks.value.find((t) => t.id === task_id);
+        if (task && task.status === "running") {
+          const i = task.currentIndex || 0;
+          const nestedCount = task.totalInLevel || 1;
+
+          // 计算并显示当前解压层级的整体进度 (0% ~ 100%)
+          const currentLayerProgress = ((i + progress / 100.0) / nestedCount) * 100.0;
+          task.progress = Math.round(currentLayerProgress);
+        }
+      });
+      if (!isMounted) {
+        uSingleProgress();
+      } else {
+        unlistenSingleProgress = uSingleProgress;
+      }
+    } catch (e) {
+      console.error("注册 single-extract-progress 监听失败:", e);
+    }
+
+    try {
       const uDrag = await getCurrentWindow().onDragDropEvent(async (event) => {
         if (event.payload.type === "drop") {
           await addFilesByPaths(event.payload.paths);
@@ -450,6 +481,7 @@ export function useUnzip(
   onUnmounted(() => {
     isMounted = false;
     if (unlistenLog) unlistenLog();
+    if (unlistenSingleProgress) unlistenSingleProgress();
     if (unlistenDragDrop) unlistenDragDrop();
   });
 
