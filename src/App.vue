@@ -147,7 +147,7 @@ onMounted(async () => {
         </div>
 
         <!-- Scrollable Task List -->
-        <div v-else class="flex-1 overflow-y-auto p-6 space-y-4 custom-scrollbar bg-app-bg/5">
+        <div v-else class="flex-1 overflow-y-auto p-6 grid grid-cols-1 lg:grid-cols-2 gap-4 content-start custom-scrollbar bg-app-bg/5">
           <TaskCard 
             v-for="(task, index) in tasks" 
             :key="task.id"
