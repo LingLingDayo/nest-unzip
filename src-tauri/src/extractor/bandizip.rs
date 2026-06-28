@@ -56,15 +56,12 @@ pub fn try_extract_bc(
     // 1. 尝试获取压缩包内的文件总数
     let total_files = get_bandizip_total_files(exe_path, archive, password);
 
-    // 2. 构造解压命令
     let mut cmd = Command::new(exe_path);
-    cmd.arg("x")
-        .arg(format!("-o:{}", out_dir))
-        .arg("-y")
-        .arg(archive);
+    cmd.arg("x").arg(format!("-o:{}", out_dir)).arg("-y");
     if let Some(p) = password {
         cmd.arg(format!("-p:{}", p));
     }
+    cmd.arg(archive);
     cmd.stdin(Stdio::null());
     hide_window(&mut cmd);
 
